@@ -874,6 +874,7 @@ async def fetch_og_title(session, url, timeout=7):
 
 
 def create_app():
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     app = web.Application()
     app["lock"] = DATA_LOCK
     app["session"] = aiohttp.ClientSession()
