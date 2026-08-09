@@ -1,6 +1,7 @@
 import asyncio
 import hmac
 import json
+import logging
 import os
 import time
 from collections import deque
@@ -17,8 +18,6 @@ UPLOADS_DIR = BASE_DIR / "uploads"
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "BOT_TOKEN")
 GITHUB_USER = os.getenv("GITHUB_USER", "")
-
-BUILD = "005ad62"
 
 DATA_LOCK = asyncio.Lock()
 
@@ -187,8 +186,29 @@ def validate_init_data(query_string):
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(values.items()))
     calc = hmac.new(_tg_secret_key(), data_check_string.encode(), sha256).hexdigest()
     if not hmac.compare_digest(calc, hash_):
+        try:
+            dec = {k: unquote_plus(v) for k, v in values.items()}
+            dcs_dec = "\n".join(f"{k}={v}" for k, v in sorted(dec.items()))
+            h_dec = hmac.new(_tg_secret_key(), dcs_dec.encode(), sha256).hexdigest()
+            logging.getLogger("webapp").warning(
+                "initData отклонён: recv=%s enc=%s dec=%s dcs=%r", hash_, calc, h_dec, data_check_string[:160]
+            )
+        except Exception:
+            pass
         return {}
     return {k: unquote_plus(v) for k, v in values.items()}
+
+
+def _build_marker():
+    import inspect
+    try:
+        src = inspect.getsource(validate_init_data)
+        return sha256(src.encode()).hexdigest()[:8]
+    except Exception:
+        return "unknown"
+
+
+BUILD = _build_marker()
 
 
 def auth_user(request):
