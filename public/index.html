@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#7c5cff">
+<meta name="description" content="Общий вишлист подарков для двоих">
+<title>Вишлист вдвоём</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎁</text></svg>">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="bgwall"><div id="bgwall-img"></div><div id="bgwall-overlay"></div></div>
+
+<main id="main" aria-live="polite"></main>
+
+<nav id="tabbar" aria-label="Основная навигация">
+  <button class="tb-btn" data-view="home" aria-label="Главная">
+    <svg viewBox="0 0 24 24"><path d="M3 11.2 12 3l9 8.2V21a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" fill="currentColor"/></svg>
+    <span>Главная</span>
+  </button>
+  <button class="tb-btn" data-view="wishlist" aria-label="Вишлист">
+    <svg viewBox="0 0 24 24"><path d="M19.3 4.9a4.5 4.5 0 0 0-6.4 0L12 5.9l-.9-1a4.5 4.5 0 0 0-6.4 6.4l.9.9L12 18.8l6.4-7.6.9-.9a4.5 4.5 0 0 0 0-6.4z" fill="currentColor"/></svg>
+    <span>Вишлист</span>
+  </button>
+  <button class="tb-btn" data-view="ideas" aria-label="Идеи">
+    <svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.3h6c0-1 .4-1.8 1-2.3A7 7 0 0 0 12 2zm-1 15v2h2v-2zm0 3v1a1 1 0 0 0 2 0v-1z" fill="currentColor"/></svg>
+    <span>Идеи</span>
+  </button>
+  <button class="tb-btn" data-view="calendar" aria-label="Календарь">
+    <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+    <span>Даты</span>
+  </button>
+  <button class="tb-btn" data-view="profile" aria-label="Профиль">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 21a8 8 0 0 1 16 0" fill="currentColor"/></svg>
+    <span>Моё</span>
+  </button>
+</nav>
+
+<button id="fab" aria-label="Добавить подарок"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button>
+
+<div id="modal-root"></div>
+<div id="toast-root" aria-live="polite"></div>
+<div id="confetti-root" aria-hidden="true"></div>
+
+<script src="/script.js"></script>
+</body>
+</html>
