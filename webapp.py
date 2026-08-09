@@ -168,6 +168,10 @@ async def add_item(uid, body, kind="wishlist"):
         return item
 
 
+def _tg_secret_key():
+    return hmac.new(b"WebAppData", BOT_TOKEN.encode(), sha256).digest()
+
+
 def validate_init_data(query_string):
     if not BOT_TOKEN or BOT_TOKEN == "BOT_TOKEN":
         return {}
@@ -178,9 +182,10 @@ def validate_init_data(query_string):
     for k in values:
         values[k] = unquote_plus(values[k])
     hash_ = values.pop("hash", "")
+    if not hash_:
+        return {}
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(values.items()))
-    secret = sha256(BOT_TOKEN.encode()).digest()
-    calc = hmac.new(secret, data_check_string.encode(), sha256).hexdigest()
+    calc = hmac.new(_tg_secret_key(), data_check_string.encode(), sha256).hexdigest()
     if not hmac.compare_digest(calc, hash_):
         return {}
     return values
