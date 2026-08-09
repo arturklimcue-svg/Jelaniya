@@ -67,7 +67,6 @@ function toast(msg, actionText, onAction, dur = 3500) {
 
 function openModal(html, title) {
   const root = $("#modal-root");
-  root.innerHTML = "";
   const mask = el("div", "modal-mask");
   const modal = el("div", "modal");
   modal.innerHTML = (title
@@ -79,7 +78,11 @@ function openModal(html, title) {
   root.appendChild(mask);
   return modal;
 }
-function closeModal() { $("#modal-root").innerHTML = ""; }
+function closeModal() {
+  const root = $("#modal-root");
+  const last = root.lastElementChild;
+  if (last && last.classList.contains("modal-mask")) last.remove();
+}
 
 function confirmModal(msg, onOk, okText = "Да", danger = false) {
   const m = openModal(`
@@ -122,9 +125,19 @@ function api(path, opts = {}) {
 
 function uploadFile(file) {
   const fd = new FormData();
-  fd.append("file", file, file.name || "file.webm");
+  const t = file.type || "";
+  let ext = "webm";
+  if (t === "image/png") ext = "png";
+  else if (t === "image/webp") ext = "webp";
+  else if (t === "image/gif") ext = "gif";
+  else if (t.startsWith("image/")) ext = "jpg";
+  else if (t === "audio/ogg" || t === "audio/opus") ext = "ogg";
+  else if (t === "audio/mp4" || t === "audio/m4a") ext = "m4a";
+  let name = file.name || "file";
+  if (!/\.[a-z0-9]{2,5}$/i.test(name)) name += "." + ext;
+  fd.append("file", file, name);
   return fetch("/api/upload?initData=" + encodeURIComponent(S.initData), { method: "POST", body: fd })
-    .then((r) => r.json())
+    .then((r) => r.json().catch(() => ({ ok: false, error: "Ошибка сервера при загрузке (HTTP " + r.status + ")" })))
     .then((b) => { if (!b.ok) throw new Error(b.error || "Ошибка загрузки"); return b.url; });
 }
 
@@ -1119,10 +1132,23 @@ function openCropper(file) {
         const out = document.createElement("canvas");
         out.width = 900; out.height = 1200;
         out.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, 900, 1200);
-        out.toBlob((blob) => {
+        const finish = (blob) => {
           URL.revokeObjectURL(url);
-          resolve(blob);
-        }, "image/jpeg", 0.88);
+          closeModal();
+          if (blob) resolve(blob);
+          else reject(new Error("Не удалось подготовить фото"));
+        };
+        if (out.toBlob) {
+          out.toBlob(finish, "image/jpeg", 0.88);
+        } else {
+          try {
+            const dataUrl = out.toDataURL("image/jpeg", 0.88);
+            const bin = atob(dataUrl.split(",")[1]);
+            const arr = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+            finish(new Blob([arr], { type: "image/jpeg" }));
+          } catch (err) { reject(err); }
+        }
       };
     };
     img.onerror = () => reject(new Error("Не удалось открыть фото"));
