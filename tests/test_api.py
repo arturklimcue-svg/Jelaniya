@@ -112,6 +112,11 @@ async def test_unauthorized(api):
     assert r.status == 403
 
 
+async def test_health(api):
+    r = await api.get("/api/health")
+    assert (await r.json())["ok"] is True
+
+
 def test_initdata_telegram_algorithm(monkeypatch):
     monkeypatch.setattr(w, "BOT_TOKEN", "test_secret")
     values = {"user": json.dumps({"id": 42}), "auth_date": "0", "query_id": "q42"}

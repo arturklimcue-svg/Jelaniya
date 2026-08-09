@@ -18,6 +18,8 @@ UPLOADS_DIR = BASE_DIR / "uploads"
 BOT_TOKEN = os.getenv("BOT_TOKEN", "BOT_TOKEN")
 GITHUB_USER = os.getenv("GITHUB_USER", "")
 
+BUILD = "005ad62"
+
 DATA_LOCK = asyncio.Lock()
 
 DEFAULT_DATA = {
@@ -765,6 +767,10 @@ async def background_delete_handler(request):
     return api(data)
 
 
+async def health_handler(request):
+    return web.json_response({"ok": True, "build": BUILD})
+
+
 async def diag_handler(request):
     user, _ = auth_user(request)
     if not user:
@@ -909,6 +915,7 @@ def create_app():
     app.router.add_post("/api/background/set", background_set_handler)
     app.router.add_post("/api/background/{index}/delete", background_delete_handler)
     app.router.add_get("/api/diag", diag_handler)
+    app.router.add_get("/api/health", health_handler)
 
     app.router.add_get("/style.css", static_css)
     app.router.add_get("/script.js", static_js)
