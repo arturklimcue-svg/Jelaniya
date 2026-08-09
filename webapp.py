@@ -178,11 +178,9 @@ def validate_init_data(query_string):
     if not BOT_TOKEN or BOT_TOKEN == "BOT_TOKEN":
         return {}
     try:
-        values = dict(x.split("=", 1) for x in query_string.split("&"))
+        values = dict(x.split("=", 1) for x in query_string.split("&") if "=" in x)
     except ValueError:
         return {}
-    for k in values:
-        values[k] = unquote_plus(values[k])
     hash_ = values.pop("hash", "")
     if not hash_:
         return {}
@@ -190,7 +188,7 @@ def validate_init_data(query_string):
     calc = hmac.new(_tg_secret_key(), data_check_string.encode(), sha256).hexdigest()
     if not hmac.compare_digest(calc, hash_):
         return {}
-    return values
+    return {k: unquote_plus(v) for k, v in values.items()}
 
 
 def auth_user(request):

@@ -2,7 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import aiohttp
 import pytest
@@ -16,11 +16,12 @@ PNG_1PX = base64.b64decode(
 
 
 def make_init(tg_id, secret="test_secret"):
-    values = {"user": json.dumps({"id": tg_id}), "auth_date": "0", "query_id": "q" + str(tg_id)}
-    dcs = "\n".join(f"{k}={v}" for k, v in sorted(values.items()))
+    values = {"user": json.dumps({"id": tg_id}, separators=(",", ":")), "auth_date": "0", "query_id": "q" + str(tg_id)}
+    pairs = [f"{k}={quote(str(v), safe='')}" for k, v in values.items()]
+    dcs = "\n".join(sorted(pairs))
     key = hmac.new(b"WebAppData", secret.encode(), hashlib.sha256).digest()
     h = hmac.new(key, dcs.encode(), hashlib.sha256).hexdigest()
-    return urlencode({"user": values["user"], "auth_date": "0", "query_id": values["query_id"], "hash": h})
+    return "&".join(pairs) + "&hash=" + h
 
 
 class Api:
@@ -119,13 +120,15 @@ async def test_health(api):
 
 def test_initdata_telegram_algorithm(monkeypatch):
     monkeypatch.setattr(w, "BOT_TOKEN", "test_secret")
-    values = {"user": json.dumps({"id": 42}), "auth_date": "0", "query_id": "q42"}
-    dcs = "\n".join(f"{k}={v}" for k, v in sorted(values.items()))
+    user = json.dumps({"id": 42}, separators=(",", ":"))
+    values = {"user": user, "auth_date": "0", "query_id": "q42"}
+    pairs = [f"{k}={quote(str(v), safe='')}" for k, v in values.items()]
+    dcs = "\n".join(sorted(pairs))
     correct = hmac.new(hmac.new(b"WebAppData", b"test_secret", hashlib.sha256).digest(), dcs.encode(), hashlib.sha256).hexdigest()
-    old_wrong = hmac.new(hashlib.sha256(b"test_secret").digest(), dcs.encode(), hashlib.sha256).hexdigest()
-    base = "&".join(f"{k}={v}" for k, v in values.items())
-    assert w.validate_init_data(base + "&hash=" + correct)["query_id"] == "q42"
-    assert w.validate_init_data(base + "&hash=" + old_wrong) == {}
+    decoded_dcs = "\n".join(f"{k}={v}" for k, v in sorted(values.items()))
+    wrong = hmac.new(hmac.new(b"WebAppData", b"test_secret", hashlib.sha256).digest(), decoded_dcs.encode(), hashlib.sha256).hexdigest()
+    assert w.validate_init_data("&".join(pairs) + "&hash=" + correct)["query_id"] == "q42"
+    assert w.validate_init_data("&".join(pairs) + "&hash=" + wrong) == {}
 
 
 async def test_patch_permissions(pair):
