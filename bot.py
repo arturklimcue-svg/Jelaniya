@@ -17,6 +17,7 @@ import webapp
 logging.basicConfig(level=logging.INFO)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+PAGES_FALLBACK = os.getenv("PAGES_FALLBACK", "https://arturklimcue-svg.github.io/Jelaniya/")
 
 
 def webapp_url() -> str:
@@ -24,7 +25,7 @@ def webapp_url() -> str:
         v = os.getenv(env, "").strip()
         if v:
             return f"https://{v}" if env == "DOMAIN" else v
-    return ""
+    return PAGES_FALLBACK
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
