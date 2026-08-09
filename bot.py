@@ -54,6 +54,7 @@ async def cmd_start(message: Message):
     )
     url = webapp_url()
     if url:
+        logging.info("Кнопка «Вишлист» ведёт на: %s", url)
         try:
             await bot.set_chat_menu_button(
                 chat_id=message.chat.id,

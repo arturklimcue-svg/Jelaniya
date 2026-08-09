@@ -165,6 +165,12 @@ function updateTabbar() {
 function render() {
   const main = $("#main");
   const v = S.view;
+  if (!S.data) {
+    main.innerHTML = `<section class="view" style="display:block">
+      <div class="empty" style="padding-top:80px"><span class="emo">⏳</span>Загружаю вишлист…</div></section>`;
+    updateTabbar();
+    return;
+  }
   if (v === "home") main.innerHTML = viewHome();
   else if (v === "wishlist") main.innerHTML = viewWishlist();
   else if (v === "ideas") main.innerHTML = viewIdeas();
@@ -803,6 +809,7 @@ function restoreHistory(id) {
 const actions = {
   "nav": (b) => go(b.dataset.view),
   "close-modal": () => closeModal(),
+  "welcome-ok": (b) => { try { localStorage.setItem("wl_welcome_seen", "1"); } catch (e) {} closeModal(); },
   "confirm-ok": (b) => { const m = b.closest(".modal"); const fn = m._onOk; closeModal(); fn && fn(); },
   "wl-tab": (b) => { S.wlTab = b.dataset.val; S.wlFilter = "all"; S.search = ""; render(); },
   "filter": (b) => { S.wlFilter = b.dataset.val; render(); },
@@ -829,7 +836,8 @@ const actions = {
   "bg-set": (b) => api("/api/background/set", { method: "POST", body: JSON.stringify({ index: +b.dataset.index }) }).then((d) => { if (d.ok) { S.data = d; applyBackground(); toast("Фон обновлён"); } }),
   "bg-add": (b) => pickBackground(b),
   "export": () => exportList(),
-  "open-bot": () => { try { tg?.openTelegramLink("https://t.me/"); } catch (e) {} },
+  "reload": () => { try { tg?.HapticFeedback?.notificationOccurred?.("warning"); } catch (e) {} location.reload(); },
+  "open-bot": () => { try { tg?.openTelegramLink?.("https://t.me/" + (window.WL_BOT || "")); } catch (e) {} },
   "offline": () => toast(navigator.onLine ? "Вы онлайн 🌐" : "Вы офлайн — работает из кэша"),
   "f-surprise": (b) => {
     const row = b.closest(".modal")?.querySelector("#surprise-row");
@@ -1129,11 +1137,15 @@ function openCropper(file) {
 
 /* ============================ entry ============================ */
 
-function showNeedBot() {
+function showNeedBot(reason = "") {
+  const inTg = Boolean(S.initData);
+  const why = reason
+    || (inTg
+      ? "Сервер вишлиста недоступен. Возможно, открыта статическая копия — полная версия работает через бота."
+      : "Этот мини-приложение открывается через Telegram-бота.");
   $("#main").innerHTML = `<section class="view" style="display:block">
-    <div class="empty" style="padding-top:60px"><span class="emo">🤖</span>
-    Этот мини-приложение открывается через Telegram-бота.<br>
-    <button class="btn primary" style="margin-top:16px" data-action="open-bot">Открыть бота</button></div>
+    <div class="empty" style="padding-top:60px"><span class="emo">🤖</span>${esc(why)}<br>
+    <button class="btn primary" style="margin-top:16px" data-action="reload">Повторить</button></div>
   </section>`;
   updateTabbar();
 }
@@ -1165,16 +1177,19 @@ function swRegister() {
 }
 
 async function boot() {
+  try { tg?.expand?.(); tg?.ready?.(); } catch (e) {}
   bindGlobal();
   applyTheme();
   swRegister();
   const d = await loadData();
-  if (!d?.ok) { showNeedBot(); return; }
+  if (!d?.ok) { showNeedBot(d.error ? `Ошибка: ${d.error}` : ""); return; }
   if (window.location.search.includes("initData")) history.replaceState(null, "", "/");
+  try { if (localStorage.getItem("wl_welcome_seen")) return; } catch (e) {}
   const m = openModal(`<div style="display:flex;gap:12px;align-items:center;padding:8px 0">
     <div style="width:38px;height:38px;border-radius:12px;background:var(--grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800">🧡</div>
     <div><b>Добро пожаловать!</b><div style="font-size:13px;color:var(--text2)">Загадывайте желания и радуйте друг друга 🎁</div></div></div>
-    <div class="modal-btns"><button class="btn primary" data-action="close-modal">Понятно</button></div>`);
+    <div class="modal-btns"><button class="btn primary" data-action="welcome-ok">Понятно</button></div>`);
+  m._welcome = true;
 }
 
 boot();
