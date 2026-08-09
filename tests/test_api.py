@@ -313,3 +313,11 @@ async def test_index_served(api):
     r = await api.get("/")
     assert r.status == 200
     assert "Вишлист" in await r.text()
+
+
+async def test_static_assets_served(api):
+    for path, ctype in (("/style.css", "text/css"), ("/script.js", "text/javascript"),
+                        ("/sw.js", "text/javascript"), ("/manifest.json", "application/manifest+json")):
+        r = await api.get(path)
+        assert r.status == 200, path
+        assert ctype in r.headers.get("Content-Type", "")

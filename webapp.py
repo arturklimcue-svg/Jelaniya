@@ -905,7 +905,28 @@ def create_app():
     app.router.add_post("/api/background/{index}/delete", background_delete_handler)
     app.router.add_get("/api/diag", diag_handler)
 
+    app.router.add_get("/style.css", static_css)
+    app.router.add_get("/script.js", static_js)
+    app.router.add_get("/sw.js", static_sw)
+    app.router.add_get("/manifest.json", static_manifest)
+
     return app
+
+
+async def static_css(request):
+    return web.FileResponse(BASE_DIR / "public" / "style.css", headers={"Content-Type": "text/css"})
+
+
+async def static_js(request):
+    return web.FileResponse(BASE_DIR / "public" / "script.js", headers={"Content-Type": "text/javascript"})
+
+
+async def static_sw(request):
+    return web.FileResponse(BASE_DIR / "public" / "sw.js", headers={"Content-Type": "text/javascript"})
+
+
+async def static_manifest(request):
+    return web.FileResponse(BASE_DIR / "public" / "manifest.json", headers={"Content-Type": "application/manifest+json"})
 
 
 async def index(request):
