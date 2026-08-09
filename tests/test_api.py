@@ -107,6 +107,29 @@ async def test_add_and_data(pair):
     assert d["names"][uid_a] == "Аня"
 
 
+async def test_add_returns_full_data(pair):
+    client, uid_a, _, ini_a, _ = pair
+    r = await add(client, ini_a, title="Плед")
+    body = await r.json()
+    assert body["ok"] is True
+    assert body["me"] == uid_a
+    assert body["names"][uid_a] == "Аня"
+    assert len(body["wishlist"]) == 1
+    assert body["wishlist"][0]["userId"] == uid_a
+
+
+async def test_mutations_return_full_data(pair):
+    client, uid_a, uid_b, ini_a, ini_b = pair
+    r = await add(client, ini_a, title="Книга")
+    iid = (await r.json())["item"]["id"]
+    r = await client.patch(f"/api/items/{iid}?" + urlencode({"initData": ini_b}), json={"bought": True})
+    body = await r.json()
+    assert body["me"] == uid_b
+    assert body["wishlist"][0]["bought"] is True
+    assert body["wishlist"][0]["boughtBy"] == uid_b
+    assert isinstance(body["ideas"], list) and isinstance(body["events"], list)
+
+
 async def test_unauthorized(api):
     r = await api.get("/api/data")
     assert r.status == 403

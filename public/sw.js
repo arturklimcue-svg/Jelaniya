@@ -1,4 +1,4 @@
-const CACHE = "wishlist-v1";
+const CACHE = "wishlist-v2";
 const ASSETS = ["/", "/index.html", "/style.css", "/script.js", "/manifest.json"];
 
 self.addEventListener("install", (e) => {

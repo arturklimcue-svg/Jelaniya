@@ -369,6 +369,12 @@ def api_data(data, uid):
     }
 
 
+def full_api(data, uid, **extra):
+    payload = api_data(data, uid)
+    payload.update(extra)
+    return api(data, **payload)
+
+
 async def api_data_handler(request):
     user, _ = auth_user(request)
     if not user:
@@ -437,7 +443,7 @@ async def add_handler(request):
         return web.json_response({"ok": False, "error": "Название не заполнено"}, status=400)
     lst.insert(0, item)
     await _save(data)
-    return api(data, item=item)
+    return full_api(data, uid, item=item)
 
 
 def _find_item(data, kind, item_id):
@@ -475,7 +481,7 @@ async def delete_handler(request):
     remove_upload(it.get("voice"))
     remove_upload(it.get("giftedPhoto"))
     await _save(data)
-    return api(data)
+    return full_api(data, uid)
 
 
 def _validated_patch(item, user, field, value):
@@ -556,7 +562,7 @@ async def patch_handler(request):
     if it.get("pinned"):
         lst.insert(0, lst.pop(i))
     await _save(data)
-    return api(data, item=it)
+    return full_api(data, uid, item=it)
 
 
 async def restore_handler(request):
@@ -582,7 +588,7 @@ async def restore_handler(request):
             return web.json_response({"ok": False, "error": "Уже существует"}, status=400)
     data[kind].insert(0, item)
     await _save(data)
-    return api(data, item=item)
+    return full_api(data, uid, item=item)
 
 
 async def copy_handler(request):
@@ -613,7 +619,7 @@ async def copy_handler(request):
     })
     data["wishlist"].insert(0, copy)
     await _save(data)
-    return api(data, item=copy)
+    return full_api(data, uid, item=copy)
 
 
 async def gift_handler(request):
@@ -641,7 +647,7 @@ async def gift_handler(request):
     data["history"].insert(0, it)
     lst.pop(i)
     await _save(data)
-    return api(data, item=it)
+    return full_api(data, uid, item=it)
 
 
 async def to_item_handler(request):
@@ -662,7 +668,7 @@ async def to_item_handler(request):
     data["wishlist"].insert(0, it)
     lst.pop(i)
     await _save(data)
-    return api(data, item=it)
+    return full_api(data, uid, item=it)
 
 
 async def add_event_handler(request):
@@ -685,7 +691,7 @@ async def add_event_handler(request):
                            "card": card, "userId": uid, "createdAt": now_ms()})
     data["events"].sort(key=lambda e: e["dateTs"])
     await _save(data)
-    return api(data)
+    return full_api(data, uid)
 
 
 async def delete_event_handler(request):
@@ -699,7 +705,7 @@ async def delete_event_handler(request):
     event_id = request.match_info["id"]
     data["events"] = [e for e in data["events"] if e["id"] != event_id]
     await _save(data)
-    return api(data)
+    return full_api(data, uid)
 
 
 async def add_category_handler(request):
@@ -720,7 +726,7 @@ async def add_category_handler(request):
     if name not in cats:
         cats.append(name)
     await _save(data)
-    return api(data)
+    return full_api(data, uid)
 
 
 async def delete_category_handler(request):
@@ -740,7 +746,7 @@ async def delete_category_handler(request):
             if it.get("category") == name:
                 it["category"] = ""
     await _save(data)
-    return api(data)
+    return full_api(data, uid)
 
 
 async def background_handler(request):
@@ -762,7 +768,7 @@ async def background_handler(request):
     data["backgrounds"].append({"url": url, "userId": uid, "createdAt": now_ms()})
     data["backgroundIndex"] = len(data["backgrounds"]) - 1
     await _save(data)
-    return api(data)
+    return full_api(data, uid)
 
 
 async def background_set_handler(request):
@@ -781,7 +787,7 @@ async def background_set_handler(request):
         return web.json_response({"ok": False, "error": "Нет такого фона"}, status=400)
     data["backgroundIndex"] = index
     await _save(data)
-    return api(data)
+    return full_api(data, uid)
 
 
 async def background_delete_handler(request):
@@ -800,7 +806,7 @@ async def background_delete_handler(request):
     if data["backgroundIndex"] >= len(data["backgrounds"]):
         data["backgroundIndex"] = max(0, len(data["backgrounds"]) - 1)
     await _save(data)
-    return api(data)
+    return full_api(data, uid)
 
 
 async def health_handler(request):

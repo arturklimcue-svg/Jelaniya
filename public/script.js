@@ -132,6 +132,7 @@ async function loadData(silent) {
   const d = await api("/api/data");
   if (d.ok) {
     S.data = d;
+    S.me = d.me;
     applyBackground();
     render();
   } else if (!silent) {
@@ -839,12 +840,6 @@ const actions = {
   "reload": () => { try { tg?.HapticFeedback?.notificationOccurred?.("warning"); } catch (e) {} location.reload(); },
   "open-bot": () => { try { tg?.openTelegramLink?.("https://t.me/" + (window.WL_BOT || "")); } catch (e) {} },
   "offline": () => toast(navigator.onLine ? "Вы онлайн 🌐" : "Вы офлайн — работает из кэша"),
-  "f-surprise": (b) => {
-    const row = b.closest(".modal")?.querySelector("#surprise-row");
-    if (row) row.style.display = b.checked ? "block" : "none";
-    const tr = b.closest(".switch")?.querySelector(".sw-track");
-    tr && tr.classList.toggle("on", b.checked);
-  },
   "save-item": (b) => saveItemFromModal(b.closest(".modal")),
   "save-edit": (b) => saveEdit(b.closest(".modal")),
   "save-surprise": (b) => saveSurprise(b.closest(".modal")),
@@ -1150,15 +1145,41 @@ function showNeedBot(reason = "") {
   updateTabbar();
 }
 
+function renderKeepFocus() {
+  const a = document.activeElement;
+  const keep = a?.dataset?.action === "search";
+  const pos = keep ? a.selectionStart : -1;
+  render();
+  if (keep) {
+    const nx = document.querySelector("[data-action=search]");
+    if (nx) { nx.focus(); if (pos >= 0) nx.setSelectionRange(pos, pos); }
+  }
+}
+
 function bindGlobal() {
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-action]");
     if (!btn) return;
     const a = actions[btn.dataset.action];
-    if (a) { e.preventDefault(); haptic(); a(btn, e); }
+    if (!a) return;
+    if (btn.matches("input, select, textarea")) return;
+    e.preventDefault();
+    haptic();
+    a(btn, e);
+  });
+  document.addEventListener("change", (e) => {
+    if (e.target?.dataset?.action === "bg-add") { pickBackground(e.target); return; }
+    if (e.target?.dataset?.action !== "f-surprise") return;
+    const row = e.target.closest(".modal")?.querySelector("#surprise-row");
+    if (row) row.style.display = e.target.checked ? "block" : "none";
+    const tr = e.target.closest(".switch")?.querySelector(".sw-track");
+    tr && tr.classList.toggle("on", e.target.checked);
   });
   document.addEventListener("input", (e) => {
-    if (e.target.dataset?.action === "search") S.search = e.target.value;
+    if (e.target.dataset?.action !== "search") return;
+    S.search = e.target.value;
+    clearTimeout(S._searchTimer);
+    S._searchTimer = setTimeout(renderKeepFocus, 350);
   });
   $("#fab").addEventListener("click", () => { haptic(); openAddModal(); });
   document.querySelectorAll(".tb-btn").forEach((b) => b.addEventListener("click", () => go(b.dataset.view)));
