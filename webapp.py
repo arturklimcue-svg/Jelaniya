@@ -174,14 +174,18 @@ def _tg_secret_key():
 
 
 def validate_init_data(query_string):
+    log = logging.getLogger("webapp")
     if not BOT_TOKEN or BOT_TOKEN == "BOT_TOKEN":
+        log.warning("validate: BOT_TOKEN не задан")
         return {}
     try:
         values = dict(x.split("=", 1) for x in query_string.split("&") if "=" in x)
     except ValueError:
+        log.warning("validate: не удалось разобрать query_string")
         return {}
     hash_ = values.pop("hash", "")
     if not hash_:
+        log.warning("validate: нет hash, len=%s, keys=%s", len(query_string), sorted(values))
         return {}
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(values.items()))
     calc = hmac.new(_tg_secret_key(), data_check_string.encode(), sha256).hexdigest()
@@ -366,10 +370,16 @@ def api_data(data, uid):
 async def api_data_handler(request):
     user, _ = auth_user(request)
     if not user:
+        logging.getLogger("webapp").warning(
+            "api_data: auth fail, initData present=%s len=%s",
+            "initData" in request.query, len(request.query.get("initData", "")))
         return deny()
     data = await _load()
     uid = user_uid(data, str(user.get("id")))
     if not uid:
+        logging.getLogger("webapp").warning(
+            "api_data: tg_id=%s не найден в карте (записей: %d)",
+            user.get("id"), len(data.get("tg", {})))
         return deny()
     return api(data, **api_data(data, uid))
 
