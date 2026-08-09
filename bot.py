@@ -17,7 +17,14 @@ import webapp
 logging.basicConfig(level=logging.INFO)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "")
+
+
+def webapp_url() -> str:
+    for env in ("WEBAPP_URL", "SITE_URL", "DOMAIN"):
+        v = os.getenv(env, "").strip()
+        if v:
+            return f"https://{v}" if env == "DOMAIN" else v
+    return ""
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
@@ -44,11 +51,12 @@ async def cmd_start(message: Message):
         "🔔 Бот пришлёт уведомления, когда партнёр добавит или купит подарок\n"
         "📅 Напомню о важных датах"
     )
-    if WEBAPP_URL:
+    url = webapp_url()
+    if url:
         try:
             await bot.set_chat_menu_button(
                 chat_id=message.chat.id,
-                menu_button=MenuButtonWebApp(text="Вишлист 🎁", web_app=WebAppInfo(url=WEBAPP_URL)),
+                menu_button=MenuButtonWebApp(text="Вишлист 🎁", web_app=WebAppInfo(url=url)),
             )
         except TelegramBadRequest:
             pass

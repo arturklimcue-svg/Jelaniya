@@ -879,6 +879,7 @@ def create_app():
     app["lock"] = DATA_LOCK
     app["session"] = aiohttp.ClientSession()
     app["upload_log"] = deque()
+    app.on_cleanup.append(_close_session)
 
     app.router.add_get("/", index)
     app.router.add_static("/uploads/", path=UPLOADS_DIR)
@@ -918,3 +919,10 @@ async def index(request):
 
 def start_background(app):
     return asyncio.create_task(image_refresh_loop(app))
+
+
+async def _close_session(app):
+    try:
+        await app["session"].close()
+    except Exception:
+        pass
