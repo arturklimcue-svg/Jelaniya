@@ -78,7 +78,7 @@ python main.py
 ## Тесты
 
 ```bash
-python -m pytest tests -o asyncio_mode=auto   # API-тесты (18 кейсов)
+python -m pytest tests -o asyncio_mode=auto   # API-тесты (24 кейса)
 node test_js.js                               # smoke-тест фронтенда
 ```
 

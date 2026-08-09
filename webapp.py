@@ -7,7 +7,7 @@ import time
 from collections import deque
 from hashlib import sha256
 from pathlib import Path
-from urllib.parse import unquote_plus, urlparse
+from urllib.parse import quote, unquote_plus, urlparse
 
 import aiohttp
 from aiohttp import web
@@ -85,6 +85,13 @@ def save_data(data):
 
 def new_id():
     return f"{int(time.time() * 1000)}"
+
+
+def _safe_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def sanitize_url(url):
@@ -187,20 +194,21 @@ def validate_init_data(query_string):
     if not hash_:
         log.warning("validate: нет hash, len=%s, keys=%s", len(query_string), sorted(values))
         return {}
+    values = {k: unquote_plus(v) for k, v in values.items()}
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(values.items()))
     calc = hmac.new(_tg_secret_key(), data_check_string.encode(), sha256).hexdigest()
     if not hmac.compare_digest(calc, hash_):
         try:
-            dec = {k: unquote_plus(v) for k, v in values.items()}
-            dcs_dec = "\n".join(f"{k}={v}" for k, v in sorted(dec.items()))
-            h_dec = hmac.new(_tg_secret_key(), dcs_dec.encode(), sha256).hexdigest()
+            enc = {k: quote(v, safe="") for k, v in values.items()}
+            dcs_enc = "\n".join(f"{k}={v}" for k, v in sorted(enc.items()))
+            h_enc = hmac.new(_tg_secret_key(), dcs_enc.encode(), sha256).hexdigest()
             logging.getLogger("webapp").warning(
-                "initData отклонён: recv=%s enc=%s dec=%s dcs=%r", hash_, calc, h_dec, data_check_string[:160]
+                "initData отклонён: recv=%s enc=%s dec=%s dcs=%r", hash_, h_enc, calc, data_check_string[:160]
             )
         except Exception:
             pass
         return {}
-    return {k: unquote_plus(v) for k, v in values.items()}
+    return values
 
 
 def _build_marker():
@@ -216,13 +224,7 @@ BUILD = _build_marker()
 
 
 def auth_user(request):
-    query = request.query
-    if "user" in query:
-        try:
-            return json.loads(query["user"]), query.get("_nonce", "")
-        except (ValueError, TypeError):
-            return None, ""
-    v = validate_init_data(query.get("initData", ""))
+    v = validate_init_data(request.query.get("initData", ""))
     if not v:
         return None, ""
     try:
@@ -398,7 +400,7 @@ def _build_item(data, uid, body):
         "type": "certificate" if body.get("type") == "certificate" else "gift",
         "bought": False, "boughtBy": "", "boughtAt": 0,
         "gifted": False, "giftedBy": "", "giftedAt": 0, "giftedPhoto": "",
-        "surprise": bool(body.get("surprise")), "revealDate": int(body.get("revealDate") or 0),
+        "surprise": bool(body.get("surprise")), "revealDate": _safe_int(body.get("revealDate")),
         "note": str(body.get("note") or "").strip()[:1000],
         "pinned": bool(body.get("pinned")),
         "reactions": {}, "voice": str(body.get("voice") or "").strip()[:2000],
@@ -420,6 +422,12 @@ async def add_handler(request):
     body, err = await read_json(request)
     if err:
         return web.json_response({"ok": False, "error": err}, status=400)
+    rd = body.get("revealDate")
+    if rd not in (None, ""):
+        try:
+            int(rd)
+        except (TypeError, ValueError):
+            return web.json_response({"ok": False, "error": "Неверная дата"}, status=400)
     kind = body.get("kind", "wishlist")
     if kind not in ("wishlist", "ideas"):
         kind = "wishlist"
@@ -669,7 +677,7 @@ async def add_event_handler(request):
     if err:
         return web.json_response({"ok": False, "error": err}, status=400)
     title = str(body.get("title") or "").strip()[:120]
-    date_ts = int(body.get("dateTs") or 0)
+    date_ts = _safe_int(body.get("dateTs"))
     card = str(body.get("card") or "").strip()[:400]
     if not title or not date_ts:
         return web.json_response({"ok": False, "error": "Название и дата обязательны"}, status=400)
@@ -768,7 +776,7 @@ async def background_set_handler(request):
     body, err = await read_json(request)
     if err:
         return web.json_response({"ok": False, "error": err}, status=400)
-    index = int(body.get("index") or 0)
+    index = _safe_int(body.get("index"))
     if not (0 <= index < len(data["backgrounds"])):
         return web.json_response({"ok": False, "error": "Нет такого фона"}, status=400)
     data["backgroundIndex"] = index
@@ -784,7 +792,7 @@ async def background_delete_handler(request):
     uid = user_uid(data, str(user.get("id")))
     if not uid:
         return deny()
-    index = int(request.match_info["index"] or 0)
+    index = _safe_int(request.match_info["index"])
     if not (0 <= index < len(data["backgrounds"])):
         return web.json_response({"ok": False, "error": "Нет такого фона"}, status=404)
     bg = data["backgrounds"].pop(index)
@@ -807,7 +815,7 @@ async def diag_handler(request):
         return deny()
     v = request.query.get("v")
     ok = v and validate_init_data(v)
-    return api(data, user=user, ok=bool(ok), github=GITHUB_USER)
+    return api(None, user=user, ok=bool(ok), github=GITHUB_USER)
 
 
 async def _load():

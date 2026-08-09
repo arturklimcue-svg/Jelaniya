@@ -17,11 +17,10 @@ PNG_1PX = base64.b64decode(
 
 def make_init(tg_id, secret="test_secret"):
     values = {"user": json.dumps({"id": tg_id}, separators=(",", ":")), "auth_date": "0", "query_id": "q" + str(tg_id)}
-    pairs = [f"{k}={quote(str(v), safe='')}" for k, v in values.items()]
-    dcs = "\n".join(sorted(pairs))
+    dcs = "\n".join(f"{k}={v}" for k, v in sorted(values.items()))
     key = hmac.new(b"WebAppData", secret.encode(), hashlib.sha256).digest()
     h = hmac.new(key, dcs.encode(), hashlib.sha256).hexdigest()
-    return "&".join(pairs) + "&hash=" + h
+    return urlencode({**values, "hash": h})
 
 
 class Api:
@@ -113,6 +112,28 @@ async def test_unauthorized(api):
     assert r.status == 403
 
 
+async def test_user_param_backdoor_removed(api):
+    r = await api.get("/api/data?" + urlencode({"user": json.dumps({"id": "111"})}))
+    assert r.status == 403
+
+
+async def test_diag(pair):
+    client, _, _, ini_a, _ = pair
+    r = await client.get("/api/diag?" + urlencode({"initData": ini_a, "v": ini_a}))
+    assert r.status == 200
+    body = await r.json()
+    assert body["ok"] is True
+    assert body["user"]["id"] == 111
+    r = await client.get("/api/diag?" + urlencode({"initData": ini_a, "v": "мусор"}))
+    assert (await r.json())["ok"] is False
+
+
+async def test_add_bad_reveal_date(pair):
+    client, _, _, ini_a, _ = pair
+    r = await add(client, ini_a, title="Плед", revealDate="не-число")
+    assert r.status == 400
+
+
 async def test_health(api):
     r = await api.get("/api/health")
     assert (await r.json())["ok"] is True
@@ -122,13 +143,15 @@ def test_initdata_telegram_algorithm(monkeypatch):
     monkeypatch.setattr(w, "BOT_TOKEN", "test_secret")
     user = json.dumps({"id": 42}, separators=(",", ":"))
     values = {"user": user, "auth_date": "0", "query_id": "q42"}
-    pairs = [f"{k}={quote(str(v), safe='')}" for k, v in values.items()]
-    dcs = "\n".join(sorted(pairs))
-    correct = hmac.new(hmac.new(b"WebAppData", b"test_secret", hashlib.sha256).digest(), dcs.encode(), hashlib.sha256).hexdigest()
-    decoded_dcs = "\n".join(f"{k}={v}" for k, v in sorted(values.items()))
-    wrong = hmac.new(hmac.new(b"WebAppData", b"test_secret", hashlib.sha256).digest(), decoded_dcs.encode(), hashlib.sha256).hexdigest()
-    assert w.validate_init_data("&".join(pairs) + "&hash=" + correct)["query_id"] == "q42"
-    assert w.validate_init_data("&".join(pairs) + "&hash=" + wrong) == {}
+    dcs_dec = "\n".join(f"{k}={v}" for k, v in sorted(values.items()))
+    pairs_enc = [f"{k}={quote(str(v), safe='')}" for k, v in values.items()]
+    dcs_enc = "\n".join(sorted(pairs_enc))
+    key = hmac.new(b"WebAppData", b"test_secret", hashlib.sha256).digest()
+    correct = hmac.new(key, dcs_dec.encode(), hashlib.sha256).hexdigest()
+    wrong = hmac.new(key, dcs_enc.encode(), hashlib.sha256).hexdigest()
+    init = "&".join(pairs_enc)
+    assert w.validate_init_data(init + "&hash=" + correct)["query_id"] == "q42"
+    assert w.validate_init_data(init + "&hash=" + wrong) == {}
 
 
 async def test_patch_permissions(pair):
