@@ -28,7 +28,6 @@ DEFAULT_DATA = {
     "wishlist": [],
     "ideas": [],
     "history": [],
-    "events": [],
     "categories": {},
     "plans": {},
     "backgrounds": [],
@@ -361,7 +360,7 @@ def api_data(data, uid):
         "wishlist": [it for it in data["wishlist"] if visible(it)],
         "ideas": data["ideas"],
         "history": data["history"],
-        "events": data["events"],
+        "events": data.get("events", []),
         "categories": data["categories"],
         "plans": data["plans"].get(uid, {}),
         "backgrounds": data["backgrounds"],
@@ -447,6 +446,7 @@ async def add_handler(request):
     item = _build_item(data, uid, body)
     if not item["title"]:
         return web.json_response({"ok": False, "error": "Название не заполнено"}, status=400)
+    _ensure_category(data, uid, item["category"])
     lst.insert(0, item)
     await _save(data)
     return full_api(data, uid, item=item)
@@ -458,6 +458,14 @@ def _find_item(data, kind, item_id):
         if it["id"] == item_id:
             return lst, i, it
     return None, None, None
+
+
+def _ensure_category(data, uid, category):
+    if not category:
+        return
+    cats = data["categories"].setdefault(uid, [])
+    if category not in cats:
+        cats.append(category)
 
 
 def _kind_from_path(request, default="wishlist"):
@@ -569,6 +577,8 @@ async def patch_handler(request):
             it[field] = _validated_patch(it, user, field, value)
         except ValueError:
             return web.json_response({"ok": False, "error": f"Плохое поле: {field}"}, status=400)
+    if "category" in body:
+        _ensure_category(data, it.get("userId"), it.get("category"))
     if it.get("pinned"):
         lst.insert(0, lst.pop(i))
     await _save(data)
@@ -683,47 +693,11 @@ async def to_item_handler(request):
     if it["userId"] != uid:
         return deny()
     it["id"] = new_id()
+    _ensure_category(data, uid, it.get("category"))
     data["wishlist"].insert(0, it)
     lst.pop(i)
     await _save(data)
     return full_api(data, uid, item=it)
-
-
-async def add_event_handler(request):
-    user, _ = auth_user(request)
-    if not user:
-        return deny()
-    data = await _load()
-    uid = user_uid(data, str(user.get("id")))
-    if not uid:
-        return deny()
-    body, err = await read_json(request)
-    if err:
-        return web.json_response({"ok": False, "error": err}, status=400)
-    title = str(body.get("title") or "").strip()[:120]
-    date_ts = _safe_int(body.get("dateTs"))
-    card = str(body.get("card") or "").strip()[:400]
-    if not title or not date_ts:
-        return web.json_response({"ok": False, "error": "Название и дата обязательны"}, status=400)
-    data["events"].append({"id": new_id(), "title": title, "dateTs": date_ts,
-                           "card": card, "userId": uid, "createdAt": now_ms()})
-    data["events"].sort(key=lambda e: e["dateTs"])
-    await _save(data)
-    return full_api(data, uid)
-
-
-async def delete_event_handler(request):
-    user, _ = auth_user(request)
-    if not user:
-        return deny()
-    data = await _load()
-    uid = user_uid(data, str(user.get("id")))
-    if not uid:
-        return deny()
-    event_id = request.match_info["id"]
-    data["events"] = [e for e in data["events"] if e["id"] != event_id]
-    await _save(data)
-    return full_api(data, uid)
 
 
 async def add_category_handler(request):
@@ -817,9 +791,6 @@ async def plan_handler(request):
         return web.json_response({"ok": False, "error": err}, status=400)
     category = str(body.get("category") or "").strip()[:60]
     note = str(body.get("note") or "").strip()[:500]
-    event_id = str(body.get("eventId") or "").strip()[:40]
-    if event_id and not any(e.get("id") == event_id for e in data["events"]):
-        return web.json_response({"ok": False, "error": "Событие не найдено"}, status=400)
     if category:
         cats = data["categories"].setdefault(uid, [])
         if category not in cats:
@@ -827,7 +798,6 @@ async def plan_handler(request):
     data["plans"].setdefault(uid, {})[item_id] = {
         "category": category,
         "note": note,
-        "eventId": event_id,
         "addedAt": now_ms(),
         "src": {
             "title": it.get("title", ""),
@@ -1055,8 +1025,6 @@ def create_app():
     app.router.add_post("/api/ideas/{id}/to-item", to_item_handler)
     app.router.add_post("/api/ideas/{id}/delete", delete_handler)
     app.router.add_post("/api/history/{id}/delete", delete_handler)
-    app.router.add_post("/api/events", add_event_handler)
-    app.router.add_post("/api/events/{id}/delete", delete_event_handler)
     app.router.add_post("/api/categories", add_category_handler)
     app.router.add_post("/api/categories/{name}/delete", delete_category_handler)
     app.router.add_post("/api/interests", interests_handler)

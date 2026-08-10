@@ -96,7 +96,6 @@ node test_js.js                               # smoke-тест фронтенд�
 | POST | `/api/items/{id}/gift` | отметить вручение (переносит в историю) |
 | POST | `/api/items/{id}/restore` | восстановить удалённое (отмена) |
 | POST | `/api/ideas/{id}/to-item` | перенести идею в вишлист |
-| POST | `/api/events`, `/api/events/{id}/delete` | события календаря |
 | POST | `/api/categories`, `/api/categories/{name}/delete` | категории |
 | POST | `/api/upload` | загрузка фото/аудио (лимиты, проверка магии, webp) |
 | POST | `/api/background` · `/set` · `/{index}/delete` | общий фон |

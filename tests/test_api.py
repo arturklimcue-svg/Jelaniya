@@ -127,7 +127,7 @@ async def test_mutations_return_full_data(pair):
     assert body["me"] == uid_a
     assert body["wishlist"][0]["bought"] is True
     assert body["wishlist"][0]["boughtBy"] == uid_a
-    assert isinstance(body["ideas"], list) and isinstance(body["events"], list)
+    assert isinstance(body["ideas"], list)
 
 
 async def test_unauthorized(api):
@@ -308,18 +308,12 @@ async def test_delete_and_restore(pair):
     assert d["wishlist"][0]["id"] == iid
 
 
-async def test_events(pair):
-    client, _, _, ini_a, ini_b = pair
-    r = await client.post("/api/events?" + urlencode({"initData": ini_a}),
-                          json={"title": "ДР Ани", "dateTs": w.now_ms() + 86_400_000, "card": "Счастья!"})
-    assert r.status == 200
+async def test_new_category_auto_added(pair):
+    client, uid_a, _, ini_a, ini_b = pair
+    await add(client, ini_a, title="Плед", category="уют")
     d = await get_data(client, ini_b)
-    assert d["events"][0]["title"] == "ДР Ани"
-    eid = d["events"][0]["id"]
-    r = await client.post(f"/api/events/{eid}/delete?" + urlencode({"initData": ini_b}))
-    assert r.status == 200
-    d = await get_data(client, ini_b)
-    assert d["events"] == []
+    assert d["wishlist"][0]["category"] == "уют"
+    assert "уют" in d["categories"][uid_a]
 
 
 async def test_categories(pair):
@@ -488,27 +482,21 @@ async def test_plans_private_and_flow(pair):
     assert body["plans"] == {}
 
 
-async def test_plans_empty_and_event(pair):
+async def test_plans_empty(pair):
     client, uid_a, uid_b, ini_a, ini_b = pair
     await add(client, ini_a, title="Лампочка", category="Техника")
     it = (await get_data(client, ini_b))["wishlist"][0]
-    r = await client.post("/api/events?" + urlencode({"initData": ini_b}),
-                          json={"title": "Новый год", "dateTs": w.now_ms() + 86_400_000, "card": ""})
-    ev = (await r.json())["events"][0]
     # пустой план (без категории и заметки) сохраняется
     r = await client.post(f"/api/items/{it['id']}/plan?" + urlencode({"initData": ini_b}), json={})
     assert r.status == 200
     body = await r.json()
     assert body["plans"][it["id"]]["category"] == ""
     assert body["plans"][it["id"]]["note"] == ""
-    assert body["plans"][it["id"]].get("eventId", "") == ""
-    # привязка к событию
+    # новая категория привязывается к плану и добавляется в список категорий
     r = await client.post(f"/api/items/{it['id']}/plan?" + urlencode({"initData": ini_b}),
-                          json={"category": "Техника", "eventId": ev["id"]})
+                          json={"category": "Техника", "note": "на новый год"})
     assert r.status == 200
     body = await r.json()
-    assert body["plans"][it["id"]]["eventId"] == ev["id"]
-    # несуществующее событие отклоняется
-    r = await client.post(f"/api/items/{it['id']}/plan?" + urlencode({"initData": ini_b}),
-                          json={"eventId": "nope"})
-    assert r.status == 400
+    assert body["plans"][it["id"]]["category"] == "Техника"
+    assert body["plans"][it["id"]]["note"] == "на новый год"
+    assert "Техника" in body["categories"][uid_b]

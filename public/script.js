@@ -191,7 +191,6 @@ function render() {
   else if (v === "wishlist") main.innerHTML = viewWishlist();
   else if (v === "plans") main.innerHTML = viewPlans();
   else if (v === "ideas") main.innerHTML = viewIdeas();
-  else if (v === "calendar") main.innerHTML = viewCalendar();
   else if (v === "profile") main.innerHTML = viewProfile();
   else { S.view = "home"; main.innerHTML = viewHome(); }
   main.querySelectorAll(".view").forEach((x) => x.style.display = "block");
@@ -238,7 +237,6 @@ function viewHome() {
   const theirs = d.wishlist.filter((i) => i.userId !== S.me);
   const meDone = mine.filter((i) => i.bought).length;
   const thDone = theirs.filter((i) => i.bought).length;
-  const nextEv = [...(d.events || [])].sort((a, b) => a.dateTs - b.dateTs).find((e) => e.dateTs >= Date.now());
 
   const card = (name, count, done, total) => `<div class="card" style="padding:14px">
     <div style="display:flex;align-items:center;gap:10px">
@@ -276,12 +274,6 @@ function viewHome() {
       ${card(myName(), meDone, meDone, mine.length)}
       ${paU ? card(partnerName(), thDone, thDone, theirs.length) : `<div class="card empty" style="display:flex;flex-direction:column;justify-content:center">Нет партнёра.<br><span class="small-link">Расскажите второму открыть бота →</span></div>`}
     </div>
-    ${nextEv ? `<button class="card ev" data-action="nav" data-view="calendar" style="width:100%;text-align:left;padding:14px;margin-bottom:14px;border:none;background:var(--surface)">
-      <div style="display:flex;align-items:center;gap:12px">
-        <span style="font-size:28px">📅</span>
-        <div style="flex:1"><b>${esc(nextEv.title)}</b><br><span style="font-size:12.5px;color:var(--text2)">${fmt.format(nextEv.dateTs)} · ${countdown(nextEv.dateTs)}</span></div>
-        <span class="icon-small">›</span>
-      </div></button>` : ""}
     <div class="section-title">Мои планы</div>
     ${plansHTML}
   </section>`;
@@ -354,13 +346,11 @@ function viewPlans() {
       <div class="empty"><span class="emo">🎁</span>Здесь будут подарки, которые вы отметили из вишлиста ${esc(partnerName())}.<br>Откройте его подарок и нажмите «В планы».</div>
     </section>`;
   }
-  const evs = S.data.events || [];
-  const byEv = new Map();
-  plans.forEach(([id, p]) => { const key = p.eventId || ""; (byEv.get(key) || byEv.set(key, []).get(key)).push([id, p]); });
+  const byCat = new Map();
+  plans.forEach(([id, p]) => { const key = p.category || ""; (byCat.get(key) || byCat.set(key, []).get(key)).push([id, p]); });
   const order = [];
-  evs.forEach((e) => { if (byEv.has(e.id)) { order.push([e.title, byEv.get(e.id)]); byEv.delete(e.id); } });
-  if (byEv.has("")) order.push(["Без праздника", byEv.get("")]);
-  byEv.forEach((arr, key) => { if (key) order.push(["Праздник", arr]); });
+  if (byCat.has("")) order.push(["Без категории", byCat.get("")]);
+  byCat.forEach((arr, key) => { if (key) order.push([key, arr]); });
   const rows = order.map(([title, arr], idx) => {
     const items = arr.map(([id, p]) => planCard(id, p)).join("");
     return `<div class="section-title" style="margin-top:${idx === 0 ? 0 : 18}px">${esc(title)}</div>${items}`;
@@ -369,10 +359,6 @@ function viewPlans() {
     ${topbar("Мои планы", `выбрано для ${esc(partnerName())}`)}
     ${rows}
   </section>`;
-}
-
-function plansForEvent(evId) {
-  return Object.entries(S.data.plans || {}).filter(([id, p]) => p.eventId === evId);
 }
 
 function planCard(id, p) {
@@ -396,13 +382,9 @@ function planCard(id, p) {
   </div>`;
 }
 
-function openPlanModal(id, evId) {
+function openPlanModal(id) {
   const cur = (S.data.plans || {})[id];
-  const evs = (S.data.events || []).map((e) => `<option value="${esc(e.id)}" ${(cur && cur.eventId === e.id) || (!cur && evId === e.id) ? "selected" : ""}>${esc(e.title)}</option>`).join("");
   const m = openModal(`
-    <div class="field"><label>Праздник (необязательно)</label>
-      <select data-action="plan-ev"><option value="">— не привязан —</option>${evs}</select>
-    </div>
     <div class="field"><label>Категория</label>
       <select data-action="plan-cat">${["", ...catList()].map((c) => `<option value="${esc(c)}" ${cur && cur.category === c ? "selected" : ""}>${esc(c || "—")}</option>`).join("")}</select>
     </div>
@@ -492,61 +474,6 @@ function genIdeas() {
   return pick;
 }
 
-/* ============================ calendar ============================ */
-
-function countdown(ts) {
-  const days = Math.ceil((ts - Date.now()) / 86400000);
-  if (days > 1) return `через ${days} дн`;
-  if (days === 1) return "завтра";
-  if (days === 0) return "сегодня 🎉";
-  return "прошло";
-}
-
-function viewCalendar() {
-  const evs = [...(S.data.events || [])].sort((a, b) => a.dateTs - b.dateTs);
-  const today = new Date().toDateString();
-  const rows = evs.map((e) => {
-    const isToday = new Date(e.dateTs).toDateString() === today;
-    const due = e.dateTs <= Date.now();
-    const myPlans = plansForEvent(e.id);
-    return `<div class="card ev" style="padding:14px;margin-bottom:10px">
-      <div class="ev-card-bg"></div>
-      <div style="display:flex;align-items:center;gap:12px;position:relative">
-        <div style="text-align:center;flex:none;min-width:58px">
-          <div style="font-size:22px;font-weight:900">${fmt.format(e.dateTs)}</div>
-          <div class="ev-count ${isToday ? "today" : ""}">${countdown(e.dateTs)}</div>
-        </div>
-        <div class="row-main">
-          <div style="font-weight:800">${esc(e.title)}</div>
-          ${e.card ? `<div style="font-size:12.5px;color:var(--text2);margin-top:2px">${esc(e.card.slice(0, 60))}</div>` : ""}
-        </div>
-        ${due ? `<button class="btn small primary" data-action="open-card" data-id="${esc(e.id)}">Открытка</button>` : ""}
-        <button class="icon-small" data-action="del-event" data-id="${esc(e.id)}" title="Удалить">${icons.x}</button>
-      </div>
-      ${myPlans.length ? `<div style="position:relative;margin-top:10px;border-top:1px solid var(--surface2);padding-top:10px">
-        <div style="font-size:12.5px;font-weight:700;color:var(--text2);margin-bottom:6px">🎁 Мои планы на праздник</div>
-        ${myPlans.map(([pid, p]) => `<div style="display:flex;align-items:center;gap:8px;font-size:13.5px;margin-bottom:6px">
-          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((p.src && p.src.title) || "—")}</span>
-          <button class="icon-small" data-action="plan-remove" data-id="${esc(pid)}" title="Убрать">${icons.x}</button>
-        </div>`).join("")}
-      </div>` : ""}
-      <button class="btn small primary" data-action="plan-pick" data-event="${esc(e.id)}" style="position:relative;margin-top:10px">🎁 Выбрать подарок партнёра</button>
-    </div>`;
-  }).join("");
-  return `<section class="view" style="display:none">
-    ${topbar("Календарь дат", "дни рождения, годовщины и праздники")}
-    <div class="card" style="padding:14px;margin-bottom:14px">
-      <div class="row-2">
-        <div class="field"><label>Событие</label><input data-action="ev-title" placeholder="День рождения" maxlength="120"></div>
-        <div class="field"><label>Дата и время</label><input data-action="ev-date" type="datetime-local"></div>
-      </div>
-      <div class="field"><label>Текст открытки (необязательно)</label><textarea data-action="ev-card" placeholder="С днём рождения, любимая…" maxlength="400"></textarea></div>
-      <button class="btn primary" data-action="add-event">Добавить событие</button>
-    </div>
-    ${rows || `<div class="empty"><span class="emo">📅</span>Добавьте важные даты — бот напомнит о них.</div>`}
-  </section>`;
-}
-
 /* ============================ history ============================ */
 
 function historyRows() {
@@ -600,9 +527,6 @@ function viewProfile() {
   const myInt = (d.interests && d.interests[S.me]) || [];
   const paInt = d.partner ? ((d.interests && d.interests[d.partner]) || []) : [];
   const bgs = d.backgrounds || [];
-  const evs = d.events.map((e) => `<div class="row"><div class="row-main"><div class="row-title">${esc(e.title)}</div>
-    <div class="row-sub">${fmtFull.format(e.dateTs)}</div></div>
-    <button class="icon-small" data-action="del-event" data-id="${esc(e.id)}">${icons.x}</button></div>`).join("");
   const theme = localStorage.getItem("wltheme") || "auto";
   const hist = historyRows();
   const themeSel = (v, lbl) => `<button class="chip ${theme === v ? "active" : ""}" data-action="theme" data-val="${v}">${lbl}</button>`;
@@ -621,11 +545,6 @@ function viewProfile() {
         </label>
       </div>
       <div class="divider"></div>
-      <div class="section-title">Категории</div>
-      <div class="chips">
-        ${catList().map((c) => `<button class="chip" data-action="del-cat" data-val="${esc(c)}">${esc(c)} ✕</button>`).join("")}
-        <button class="chip add" data-action="add-cat">+</button>
-      </div>
     </div>
     <div class="section-title">Интересы и хобби</div>
     <div class="card" style="padding:14px;margin-bottom:14px">
@@ -643,10 +562,6 @@ function viewProfile() {
           ${x.link ? `<button class="btn small" data-action="open-link" data-link="${esc(x.link)}" style="margin-top:6px">🔗 Открыть</button>` : ""}</div>
         </div>`).join("")}</div>` : `<span> пока не добавил(а)</span>`}
       </div>
-    </div>
-    <div class="section-title">События и открытки</div>
-    <div class="card" style="padding:14px;margin-bottom:14px">
-      ${evs || `<span style="font-size:13.5px;color:var(--text2)">Событий нет — добавьте в разделе «Даты».</span>`}
     </div>
     <div class="section-title">История подарков</div>
     <div class="card" style="padding:14px;margin-bottom:14px">
@@ -943,19 +858,6 @@ function openItem(id) {
   m._id = id;
 }
 
-function openCard(id) {
-  const e = (S.data.events || []).find((x) => x.id === id);
-  if (!e) return;
-  openModal(`
-    <div style="text-align:center;padding:14px 6px">
-      <div style="font-size:52px;margin-bottom:10px">💌</div>
-      <div style="font-weight:800;font-size:18px">${esc(e.title)}</div>
-      <div style="color:var(--text2);font-size:13px;margin-top:4px">${fmtFull.format(e.dateTs)}</div>
-      <div class="divider"></div>
-      <div style="font-size:15px;line-height:1.7;white-space:pre-wrap">${esc(e.card || "С праздником! 🎉")}</div>
-    </div>`);
-}
-
 function restoreHistory(id) {
   const [it] = itemById(id);
   if (!it) return;
@@ -976,10 +878,7 @@ const actions = {
   "search": (b) => { S.search = b.value; render(); },
   "ideas-tab": (b) => { S.ideasTab = b.dataset.val; render(); },
   "open-item": (b) => openItem(b.dataset.id),
-  "open-card": (b) => openCard(b.dataset.id),
   "add-cat": () => promptCat(),
-  "del-cat": (b) => confirmModal(`Удалить категорию «${b.dataset.val}»?`, () =>
-    api("/api/categories/" + encodeURIComponent(b.dataset.val) + "/delete", { method: "POST" }).then((d) => { if (d.ok) { S.data = d; render(); } })),
   "random": () => randomPick(),
   "add-idea": () => addIdeaQuick(),
   "gen-ideas": () => genIdeas(),
@@ -990,8 +889,6 @@ const actions = {
     api("/api/ideas/" + b.dataset.id + "/delete", { method: "POST" }).then((d) => { if (d.ok) { S.data = d; render(); } })),
   "del-history": (b) => confirmModal("Удалить из истории?", () =>
     api("/api/history/" + b.dataset.id + "/delete", { method: "POST" }).then((d) => { if (d.ok) { S.data = d; render(); } })),
-  "add-event": (b) => addEventQuick(),
-  "del-event": (b) => api("/api/events/" + b.dataset.id + "/delete", { method: "POST" }).then((d) => { if (d.ok) { S.data = d; render(); } }),
   "theme": (b) => setTheme(b.dataset.val),
   "bg-set": (b) => api("/api/background/set", { method: "POST", body: JSON.stringify({ index: +b.dataset.index }) }).then((d) => { if (d.ok) { S.data = d; applyBackground(); toast("Фон обновлён"); } }),
   "bg-add": (b) => pickBackground(b),
@@ -1043,31 +940,17 @@ const actions = {
   "restore-history": (b) => restoreHistory(b.dataset.id),
   "plan-add": (b) => openPlanModal(b.dataset.id),
   "open-plan": (b) => openPlanModal(b.dataset.id),
-  "plan-pick": (b) => {
-    const evId = b.dataset.event;
-    const cand = (S.data.wishlist || []).filter((i) => i.userId !== S.me && !i.bought && !i.gifted && !i.surprise);
-    if (!cand.length) { toast("В списке партнёра нет некупленных подарков"); return; }
-    openModal(`<div style="font-size:13px;color:var(--text2);margin-bottom:8px">Выберите подарок партнёра для этого праздника:</div>
-      <div class="list">${cand.map((i) => `<button class="row" data-action="pick-plan-item" data-id="${esc(i.id)}" data-event="${esc(evId)}" style="width:100%;text-align:left;cursor:pointer">
-        <div class="row-avatar" ${i.image ? `style="background-image:url('${esc(i.image)}')"` : ""}></div>
-        <div class="row-main"><div class="row-title">${esc(i.title)}</div>
-        <div class="row-sub">${esc(i.category || "")}${i.price ? " · " + esc(i.price) : ""}</div></div>
-        <span style="color:var(--accent)">›</span>
-      </button>`).join("")}</div>`, "Выбрать подарок партнёра");
-  },
-  "pick-plan-item": (b) => { closeModal(); openPlanModal(b.dataset.id, b.dataset.event); },
-  "plan-new-cat": (b) => { const m = b.closest(".modal"); $("#plan-new-row", m).style.display = "block"; $("#plan-cat-new", m).focus(); },
+  "plan-new-cat": (b) => { const m = b.closest(".modal"); $("#plan-new-row", m).style.display = "block"; $("[data-action=plan-cat-new]", m).focus(); },
   "plan-save": async (b) => {
     const m = b.closest(".modal");
     const id = b.dataset.id;
-    const ev = ($("#plan-ev", m)?.value || "").trim();
-    const sel = $("#plan-cat", m).value;
+    const sel = $("[data-action=plan-cat]", m).value;
     const newRow = $("#plan-new-row", m);
-    const newCat = (newRow.style.display === "none" ? "" : ($("#plan-cat-new", m).value || "").trim());
+    const newCat = (newRow.style.display === "none" ? "" : ($("[data-action=plan-cat-new]", m).value || "").trim());
     const category = newCat || sel;
-    const note = ($("#plan-note", m).value || "").trim();
+    const note = ($("[data-action=plan-note]", m).value || "").trim();
     b.disabled = true; b.textContent = "Сохраняю…";
-    const d = await api("/api/items/" + id + "/plan", { method: "POST", body: JSON.stringify({ category, note, eventId: ev }) });
+    const d = await api("/api/items/" + id + "/plan", { method: "POST", body: JSON.stringify({ category, note }) });
     if (!d.ok) { toast(d.error || "Ошибка"); b.disabled = false; return; }
     S.data = d; closeModal(); hapticOk(); toast("Добавлено в планы 🎁"); render();
   },
@@ -1106,21 +989,7 @@ function addIdeaQuick() {
   });
 }
 
-function addEventQuick() {
-  const title = $("#main [data-action=ev-title]")?.value?.trim();
-  const dateVal = $("#main [data-action=ev-date]")?.value;
-  const card = $("#main [data-action=ev-card]")?.value?.trim() || "";
-  if (!title || !dateVal) { toast("Заполните название и дату"); return; }
-  const ts = new Date(dateVal).getTime();
-  api("/api/events", { method: "POST", body: JSON.stringify({ title, dateTs: ts, card }) }).then((d) => {
-    if (d.ok) {
-      S.data = d;
-      ["ev-title", "ev-date", "ev-card"].forEach((n) => { const x = $("#main [data-action=" + n + "]"); if (x) x.value = ""; });
-      hapticOk();
-      render();
-    } else toast(d.error);
-  });
-}
+/* ============================ sharing ============================ */
 
 function patchItem(id, payload) {
   const [it, kind] = itemById(id);
