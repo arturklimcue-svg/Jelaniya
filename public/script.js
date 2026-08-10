@@ -187,6 +187,7 @@ function render() {
   }
   if (v === "home") main.innerHTML = viewHome();
   else if (v === "wishlist") main.innerHTML = viewWishlist();
+  else if (v === "plans") main.innerHTML = viewPlans();
   else if (v === "ideas") main.innerHTML = viewIdeas();
   else if (v === "calendar") main.innerHTML = viewCalendar();
   else if (v === "recap") main.innerHTML = viewRecap();
@@ -282,6 +283,7 @@ function tileHTML(it) {
   if (it.type === "certificate") badges.push(`<span class="badge dark">🎫 сертификат</span>`);
   if (it.price) badges.push(`<span class="badge dark">${esc(it.price)}</span>`);
   if (it.priority) badges.push(`<span class="badge ${it.priority === "must" ? "grad" : "dark"}">${PRIORITY[it.priority]}</span>`);
+  if (it.userId !== S.me && (S.data.plans || {})[it.id]) badges.push(`<span class="badge grad">🎁 в планах</span>`);
   if (badges.length === 0) badges.push(`<span class="badge dark">${it.category || "подарок"}</span>`);
   const surprise = it.surprise && it.revealDate && it.revealDate > (S.data.serverTime || Date.now());
   return `<button class="tile ${it.bought ? "done" : ""} ${surprise ? "surprise-blur" : ""}" data-action="open-item" data-id="${esc(it.id)}" aria-label="${esc(it.title)}">
@@ -316,6 +318,69 @@ function viewWishlist() {
     <div class="chips">${chips}</div>
     ${grid}
   </section>`;
+}
+
+/* ============================ plans ============================ */
+
+function viewPlans() {
+  const plans = Object.entries(S.data.plans || {});
+  if (!plans.length) {
+    return `<section class="view" style="display:none">
+      ${topbar("Мои планы", "выбрано в подарок партнёру")}
+      <div class="empty"><span class="emo">🎁</span>Здесь будут подарки, которые вы отметили из вишлиста ${esc(partnerName())}.<br>Откройте его подарок и нажмите «В планы».</div>
+    </section>`;
+  }
+  const byCat = {};
+  plans.forEach(([id, p]) => { const c = p.category || ""; (byCat[c] = byCat[c] || []).push([id, p]); });
+  const cats = catList();
+  const order = cats.filter((c) => byCat[c]);
+  Object.keys(byCat).forEach((c) => { if (c && !cats.includes(c)) order.push(c); });
+  if (byCat[""]) order.push("");
+  const rows = order.map((c, idx) => {
+    const items = byCat[c].map(([id, p]) => planCard(id, p)).join("");
+    return `<div class="section-title" style="margin-top:${idx === 0 ? 0 : 18}px">${c ? esc(c) : "Без категории"}</div>${items}`;
+  }).join("");
+  return `<section class="view" style="display:none">
+    ${topbar("Мои планы", `выбрано для ${esc(partnerName())}`)}
+    ${rows}
+  </section>`;
+}
+
+function planCard(id, p) {
+  const src = p.src || {};
+  const live = S.data.wishlist.find((i) => i.id === id && i.userId !== S.me);
+  const img = live?.image || src.image;
+  return `<div class="card" style="padding:12px;margin-bottom:10px">
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <div style="width:56px;height:56px;border-radius:10px;background-size:cover;background-position:center;flex:none;background-color:var(--surface2);background-image:url('${esc(img)}')"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700">${esc(src.title || "Без названия")}</div>
+        <div style="font-size:12.5px;color:var(--text2)">${esc(src.price || "")}</div>
+        ${p.note ? `<div style="font-size:13px;color:var(--text2);margin-top:4px">${esc(p.note)}</div>` : ""}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      ${live && src.link ? `<button class="btn small" data-action="open-link" data-link="${esc(src.link)}">🔗 Открыть</button>` : ""}
+      ${live ? `<button class="btn small" data-action="copy" data-id="${esc(id)}">${icons.copy} Мне тоже</button>` : ""}
+      <button class="btn small danger" data-action="plan-remove" data-id="${esc(id)}">Убрать</button>
+    </div>
+  </div>`;
+}
+
+function openPlanModal(id) {
+  const cur = (S.data.plans || {})[id];
+  const m = openModal(`
+    <div class="field"><label>Категория</label>
+      <select data-action="plan-cat">${["", ...catList()].map((c) => `<option value="${esc(c)}" ${cur && cur.category === c ? "selected" : ""}>${esc(c || "—")}</option>`).join("")}</select>
+    </div>
+    <button class="chip add" style="margin-top:8px" data-action="plan-new-cat">+ новая категория</button>
+    <div class="field" id="plan-new-row" style="display:none"><label>Новая категория</label><input data-action="plan-cat-new" placeholder="напр. Новый год" maxlength="60"></div>
+    <div class="field"><label>Заметка</label><textarea data-action="plan-note" placeholder="например: «лампочка → подарю на Новый год»" maxlength="500">${esc(cur ? cur.note : "")}</textarea></div>
+    <div class="modal-btns">
+      <button class="btn" data-action="close-modal">Отмена</button>
+      <button class="btn primary" data-action="plan-save" data-id="${esc(id)}">Сохранить</button>
+    </div>`, "🎁 В планы");
+  return m;
 }
 
 /* ============================ ideas ============================ */
@@ -752,6 +817,8 @@ function openItem(id) {
     if (!isMine && !bought) {
       actions.push(`<button class="btn primary" data-action="buy" data-id="${esc(id)}">🛍 Купил(а)!</button>`);
       actions.push(`<button class="btn" data-action="copy" data-id="${esc(id)}">${icons.copy} Мне тоже</button>`);
+      const inPlans = (S.data.plans || {})[id];
+      actions.push(`<button class="btn ${inPlans ? "" : "primary"}" data-action="plan-add" data-id="${esc(id)}">${icons.gift} ${inPlans ? "В планах · изменить" : "В планы"}</button>`);
     }
     if (bought && !it.gifted && !isMine) actions.push(`<button class="btn primary" data-action="gift" data-id="${esc(id)}">🎀 Вручил(а)!</button>`);
     if (bought && !it.gifted && isMine) actions.push(`<button class="btn" data-action="unbuy" data-id="${esc(id)}">Вернуть в «не куплено»</button>`);
@@ -772,6 +839,7 @@ function openItem(id) {
   if (it.bought && it.boughtBy) meta.push(`<span class="badge ok">🛍 купил(а) ${esc(S.data.names[it.boughtBy] || "?")}</span>`);
   if (it.gifted && it.giftedAt) meta.push(`<span class="badge grad">🎀 вручено ${new Date(it.giftedAt).toLocaleDateString("ru-RU")}</span>`);
   if (it.surprise) meta.push(`<span class="badge warn">🎁 сюрприз до ${it.revealDate ? fmt.format(it.revealDate) : "открытия"}</span>`);
+  if (!isMine && (S.data.plans || {})[id]) meta.push(`<span class="badge grad">🎁 в планах</span>`);
 
   const surpriseHTML = kind === "wishlist" && !isMine ? `
     <div class="card" style="padding:12px;margin-top:10px;background:var(--surface2)">
@@ -871,6 +939,23 @@ const actions = {
   "copy": (b) => api("/api/items/" + b.dataset.id + "/copy", { method: "POST" }).then((d) => { if (d.ok) { S.data = d; closeModal(); hapticOk(); toast("Добавлено «мне тоже»"); render(); } }),
   "gift": (b) => openGiftModal(b.dataset.id),
   "restore-history": (b) => restoreHistory(b.dataset.id),
+  "plan-add": (b) => openPlanModal(b.dataset.id),
+  "plan-new-cat": (b) => { const m = b.closest(".modal"); $("#plan-new-row", m).style.display = "block"; $("#plan-cat-new", m).focus(); },
+  "plan-save": async (b) => {
+    const m = b.closest(".modal");
+    const id = b.dataset.id;
+    const sel = $("#plan-cat", m).value;
+    const newRow = $("#plan-new-row", m);
+    const newCat = (newRow.style.display === "none" ? "" : ($("#plan-cat-new", m).value || "").trim());
+    const category = newCat || sel;
+    const note = ($("#plan-note", m).value || "").trim();
+    if (!category && !note) { toast("Выберите категорию или напишите заметку"); return; }
+    b.disabled = true; b.textContent = "Сохраняю…";
+    const d = await api("/api/items/" + id + "/plan", { method: "POST", body: JSON.stringify({ category, note }) });
+    if (!d.ok) { toast(d.error || "Ошибка"); b.disabled = false; return; }
+    S.data = d; closeModal(); hapticOk(); toast("Добавлено в планы 🎁"); render();
+  },
+  "plan-remove": (b) => api("/api/plans/" + b.dataset.id + "/delete", { method: "POST" }).then((d) => { if (d.ok) { S.data = d; hapticOk(); toast("Убрано из планов"); render(); } }),
   "edit-item": (b) => openEditModal(b.dataset.id),
   "del-item": (b) => doDelete(b),
   "gift-photo": (b) => { const m = b.closest(".modal"); const f = $("#gift-file", m).files[0]; m._giftPhoto(f); },

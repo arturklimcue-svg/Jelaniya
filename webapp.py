@@ -30,6 +30,7 @@ DEFAULT_DATA = {
     "history": [],
     "events": [],
     "categories": {},
+    "plans": {},
     "backgrounds": [],
     "backgroundIndex": 0,
     "chats": {},
@@ -360,6 +361,7 @@ def api_data(data, uid):
         "history": data["history"],
         "events": data["events"],
         "categories": data["categories"],
+        "plans": data["plans"].get(uid, {}),
         "backgrounds": data["backgrounds"],
         "backgroundIndex": data["backgroundIndex"],
         "serverTime": now,
@@ -749,6 +751,58 @@ async def delete_category_handler(request):
     return full_api(data, uid)
 
 
+async def plan_handler(request):
+    user, _ = auth_user(request)
+    if not user:
+        return deny()
+    data = await _load()
+    uid = user_uid(data, str(user.get("id")))
+    if not uid:
+        return deny()
+    item_id = request.match_info["id"]
+    _, _, it = _find_item(data, "wishlist", item_id)
+    if not it:
+        return web.json_response({"ok": False, "error": "Не найдено"}, status=404)
+    if it.get("userId") == uid:
+        return web.json_response({"ok": False, "error": "Это ваш подарок — он уже в вашем вишлисте"}, status=400)
+    body, err = await read_json(request)
+    if err:
+        return web.json_response({"ok": False, "error": err}, status=400)
+    category = str(body.get("category") or "").strip()[:60]
+    note = str(body.get("note") or "").strip()[:500]
+    if category:
+        cats = data["categories"].setdefault(uid, [])
+        if category not in cats:
+            cats.append(category)
+    data["plans"].setdefault(uid, {})[item_id] = {
+        "category": category,
+        "note": note,
+        "addedAt": now_ms(),
+        "src": {
+            "title": it.get("title", ""),
+            "image": it.get("image", ""),
+            "link": it.get("link", ""),
+            "price": it.get("price", ""),
+        },
+    }
+    await _save(data)
+    return full_api(data, uid)
+
+
+async def plan_delete_handler(request):
+    user, _ = auth_user(request)
+    if not user:
+        return deny()
+    data = await _load()
+    uid = user_uid(data, str(user.get("id")))
+    if not uid:
+        return deny()
+    item_id = request.match_info["id"]
+    data["plans"].get(uid, {}).pop(item_id, None)
+    await _save(data)
+    return full_api(data, uid)
+
+
 async def background_handler(request):
     user, _ = auth_user(request)
     if not user:
@@ -940,6 +994,8 @@ def create_app():
     app.router.add_post("/api/items", add_handler)
     app.router.add_post("/api/items/{id}/delete", delete_handler)
     app.router.add_post("/api/items/{id}/copy", copy_handler)
+    app.router.add_post("/api/items/{id}/plan", plan_handler)
+    app.router.add_post("/api/plans/{id}/delete", plan_delete_handler)
     app.router.add_post("/api/items/{id}/gift", gift_handler)
     app.router.add_post("/api/items/{id}/restore", restore_handler)
     app.router.add_patch("/api/items/{id}", patch_handler)

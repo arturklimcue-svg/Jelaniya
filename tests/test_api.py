@@ -386,3 +386,33 @@ async def test_static_assets_served(api):
         r = await api.get(path)
         assert r.status == 200, path
         assert ctype in r.headers.get("Content-Type", "")
+
+async def test_plans_private_and_flow(pair):
+    client, uid_a, uid_b, ini_a, ini_b = pair
+    await add(client, ini_a, title="Лампочка", category="Техника")
+    it = (await get_data(client, ini_b))["wishlist"][0]
+    # партнёр отмечает подарок с новой категорией и заметкой
+    r = await client.post(f"/api/items/{it['id']}/plan?" + urlencode({"initData": ini_b}),
+                          json={"category": "Новый год", "note": "в «Диком»"})
+    body = await r.json()
+    assert body["ok"] is True
+    plan = body["plans"][it["id"]]
+    assert plan["category"] == "Новый год"
+    assert plan["note"] == "в «Диком»"
+    assert plan["src"]["title"] == "Лампочка"
+    # новая категория автоматически добавлена партнёру
+    assert "Новый год" in body["categories"][uid_b]
+    # владелец не видит чужие планы
+    d = await get_data(client, ini_a)
+    assert d["plans"] == {}
+    # партнёр видит свои планы
+    d2 = await get_data(client, ini_b)
+    assert it["id"] in d2["plans"]
+    # свой подарок отметить нельзя
+    r = await client.post(f"/api/items/{it['id']}/plan?" + urlencode({"initData": ini_a}), json={"category": "x"})
+    assert r.status == 400
+    # удаление плана
+    r = await client.post(f"/api/plans/{it['id']}/delete?" + urlencode({"initData": ini_b}))
+    body = await r.json()
+    assert body["ok"] is True
+    assert body["plans"] == {}
