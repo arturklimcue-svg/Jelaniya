@@ -138,9 +138,6 @@ html[data-theme="dark"] #bgwall-overlay { opacity: .94; }
 .tile-pin { position: absolute; top: 8px; left: 8px; z-index: 2; width: 30px; height: 30px; border-radius: 50%; background: rgba(0,0,0,.45); color: #ffd166; display: flex; align-items: center; justify-content: center; }
 .tile-pin svg, .tile-corner svg { width: 16px; height: 16px; }
 .tile.done { opacity: .72; }
-.tile.surprise-blur .tile-img { filter: blur(14px) saturate(.7); }
-.tile.surprise-blur .tile-title { filter: blur(5px); user-select: none; }
-.tile.surprise-blur .tile-shade { background: linear-gradient(180deg, rgba(0,0,0,.15), rgba(0,0,0,.5)); }
 
 /* ---------- lists ---------- */
 .list { display: flex; flex-direction: column; gap: 12px; }
@@ -185,15 +182,6 @@ input[type="color"] { width: 100%; height: 44px; padding: 4px; border-radius: 13
 .upload-preview { position: relative; border-radius: var(--radius-sm); overflow: hidden; }
 .upload-preview img { width: 100%; max-height: 220px; object-fit: cover; display: block; }
 .upload-remove { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 50%; background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center; }
-
-.switch { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 4px; }
-.switch .lbl { font-weight: 600; font-size: 14px; }
-.switch .sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
-.sw-track { width: 50px; height: 30px; border-radius: 999px; background: var(--surface2); position: relative; flex: none; transition: background .2s; border: 1px solid var(--border); }
-.sw-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: left .2s; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
-.sw-track.on { background: var(--accent); }
-.sw-track.on::after { left: 22px; }
-input.sw-hidden { position: absolute; opacity: 0; pointer-events: none; }
 
 /* ---------- modal ---------- */
 .modal-mask {

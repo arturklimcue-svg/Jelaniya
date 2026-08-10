@@ -103,7 +103,6 @@ async def test_add_and_data(pair):
     assert it["priority"] == "must"
     assert it["type"] == "certificate"
     assert it["userId"] == uid_a
-    assert it["surprise"] is False
     assert d["names"][uid_a] == "Аня"
 
 
@@ -149,12 +148,6 @@ async def test_diag(pair):
     assert body["user"]["id"] == 111
     r = await client.get("/api/diag?" + urlencode({"initData": ini_a, "v": "мусор"}))
     assert (await r.json())["ok"] is False
-
-
-async def test_add_bad_reveal_date(pair):
-    client, _, _, ini_a, _ = pair
-    r = await add(client, ini_a, title="Плед", revealDate="не-число")
-    assert r.status == 400
 
 
 async def test_health(api):
@@ -212,19 +205,6 @@ async def test_reactions(pair):
     await client.patch(f"/api/items/{iid}?" + urlencode({"initData": ini_b}), json={"reactions": ""})
     d = await get_data(client, ini_a)
     assert uid_b not in d["wishlist"][0]["reactions"]
-
-
-async def test_surprise_hides_from_owner(pair):
-    client, uid_a, uid_b, ini_a, ini_b = pair
-    r = await add(client, ini_a, title="Тайное")
-    iid = (await r.json())["item"]["id"]
-    future = w.now_ms() + 100_000_000
-    r = await client.patch(f"/api/items/{iid}?" + urlencode({"initData": ini_b}), json={"surprise": True, "revealDate": future})
-    assert r.status == 200
-    d_a = await get_data(client, ini_a)
-    assert d_a["wishlist"] == []
-    d_b = await get_data(client, ini_b)
-    assert d_b["wishlist"][0]["surprise"] is True
 
 
 async def test_copy_me_too(pair):
@@ -424,26 +404,46 @@ async def test_copy_keeps_size(pair):
 async def test_interests(pair):
     client, uid_a, uid_b, ini_a, ini_b = pair
     r = await client.post("/api/interests?" + urlencode({"initData": ini_a}),
-                          json={"list": [{"name": "Вязание", "buy": "пряжа, спицы", "link": "https://shop.ru/yarn"},
+                          json={"list": [{"name": "Вязание", "items": [{"buy": "пряжа, спицы", "link": "https://shop.ru/yarn"},
+                                                                         {"buy": "крючок", "link": "shop.ru/kryuchok"}]},
                                          {"name": "", "buy": "мусор"},
-                                         {"name": "Кофе", "buy": ""}]})
+                                         {"name": "Кофе", "buy": ""},
+                                         {"name": "Бег", "items": [{"buy": "", "link": ""}]}]})
     assert r.status == 200
     d = await get_data(client, ini_b)
-    assert d["interests"][uid_a] == [{"name": "Вязание", "buy": "пряжа, спицы", "link": "https://shop.ru/yarn"},
-                                     {"name": "Кофе", "buy": "", "link": ""}]
+    assert d["interests"][uid_a] == [
+        {"name": "Вязание", "items": [{"buy": "пряжа, спицы", "link": "https://shop.ru/yarn"},
+                                      {"buy": "крючок", "link": "https://shop.ru/kryuchok"}]},
+        {"name": "Кофе", "items": []},
+        {"name": "Бег", "items": []},
+    ]
     r = await client.post("/api/interests?" + urlencode({"initData": ini_a}), json={"list": []})
     assert r.status == 200
     d = await get_data(client, ini_a)
     assert d["interests"][uid_a] == []
 
 
-async def test_interests_link_normalized(pair):
+async def test_interests_legacy_format(pair):
     client, uid_a, _, ini_a, _ = pair
     r = await client.post("/api/interests?" + urlencode({"initData": ini_a}),
-                          json={"list": [{"name": "Бег", "link": "shop.ru/krossovki"}]})
+                          json={"list": [{"name": "Бег", "link": "shop.ru/krossovki"},
+                                         {"name": "Плавание", "buy": "очки"}]})
     assert r.status == 200
     d = await get_data(client, ini_a)
-    assert d["interests"][uid_a] == [{"name": "Бег", "buy": "", "link": "https://shop.ru/krossovki"}]
+    assert d["interests"][uid_a] == [
+        {"name": "Бег", "items": [{"buy": "", "link": "https://shop.ru/krossovki"}]},
+        {"name": "Плавание", "items": [{"buy": "очки", "link": ""}]},
+    ]
+
+
+async def test_interests_items_limit(pair):
+    client, uid_a, _, ini_a, _ = pair
+    many = [{"buy": "товар " + str(i), "link": ""} for i in range(15)]
+    r = await client.post("/api/interests?" + urlencode({"initData": ini_a}),
+                          json={"list": [{"name": "Хобби", "items": many}]})
+    assert r.status == 200
+    d = await get_data(client, ini_a)
+    assert len(d["interests"][uid_a][0]["items"]) == 10
 
 
 async def test_interests_unauthorized(api):

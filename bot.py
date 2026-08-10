@@ -112,7 +112,7 @@ async def notify_other(data, owner_uid, text):
 async def notify_changes(data, prev, snap):
     for iid, owner, _bought, _gifted in snap - prev:
         it = next((x for x in data["wishlist"] if x["id"] == iid), None)
-        if not it or it.get("surprise"):
+        if not it:
             continue
         await notify_other(data, owner,
             f"🎁 <b>{esc(webapp.display_name(data, owner))}</b> добавил(а) подарок: <b>{esc(it['title'])}</b>")

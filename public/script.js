@@ -301,14 +301,13 @@ function tileHTML(it) {
   if (it.priority) badges.push(`<span class="badge ${it.priority === "must" ? "grad" : "dark"}">${PRIORITY[it.priority]}</span>`);
   if (it.userId !== S.me && (S.data.plans || {})[it.id]) badges.push(`<span class="badge grad">🎁 в планах</span>`);
   if (badges.length === 0) badges.push(`<span class="badge dark">${it.category || "подарок"}</span>`);
-  const surprise = it.surprise && it.revealDate && it.revealDate > (S.data.serverTime || Date.now());
-  return `<button class="tile ${it.bought ? "done" : ""} ${surprise ? "surprise-blur" : ""}" data-action="open-item" data-id="${esc(it.id)}" aria-label="${esc(it.title)}">
+  return `<button class="tile ${it.bought ? "done" : ""}" data-action="open-item" data-id="${esc(it.id)}" aria-label="${esc(it.title)}">
     ${it.pinned ? `<span class="tile-pin">${icons.pin}</span>` : ""}
     <span class="tile-corner">${badges.slice(0, 2).join("")}</span>
     <span class="tile-img" ${it.image ? `style="background-image:url('${esc(it.image)}')"` : ""}></span>
     <span class="tile-shade"></span>
     <span class="tile-body">
-      <span class="tile-title">${surprise ? "🎁 Сюрприз до " + fmt.format(it.revealDate) : esc(it.title)}</span>
+      <span class="tile-title">${esc(it.title)}</span>
       <span class="tile-meta">${badges.slice(2, 5).join("")}</span>
     </span>
   </button>`;
@@ -489,24 +488,57 @@ function historyRows() {
 
 /* ============================ profile ============================ */
 
+function intGoods(int) {
+  if (Array.isArray(int.items)) return int.items;
+  const g = { buy: int.buy || "", link: int.link || "" };
+  return (g.buy || g.link) ? [g] : [];
+}
+
+function intGoodsHTML(items) {
+  return items.map((g) => `<div style="font-size:13px;color:var(--text2);margin-top:2px">
+    ${g.buy ? "🎁 " + esc(g.buy) : ""}
+    ${g.link ? `<button class="btn small" data-action="open-link" data-link="${esc(g.link)}" style="margin-top:4px">🔗 Открыть</button>` : ""}
+  </div>`).join("");
+}
+
 function interestRow(int, i) {
   return `<div class="row">
-    <div class="row-main"><div class="row-title">${esc(int.name)}</div>
-    ${int.buy ? `<div class="row-sub">🎁 ${esc(int.buy)}</div>` : ""}
-    ${int.link ? `<button class="btn small" data-action="open-link" data-link="${esc(int.link)}" style="margin-top:6px">🔗 Открыть</button>` : ""}</div>
+    <div class="row-main"><div class="row-title">${esc(int.name)}</div>${intGoodsHTML(intGoods(int))}</div>
     <button class="icon-small" data-action="int-edit" data-index="${i}" title="Редактировать">${icons.edit}</button>
     <button class="icon-small" data-action="int-del" data-index="${i}" title="Убрать">${icons.x}</button>
   </div>`;
 }
 
+function goodsRow(g, i) {
+  return `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px">
+    <div style="flex:1;min-width:0">
+      <input data-action="g-buy" data-i="${i}" value="${esc(g.buy)}" placeholder="что купить (напр. пряжа)" maxlength="120" style="width:100%;margin-bottom:6px">
+      <input data-action="g-link" data-i="${i}" value="${esc(g.link)}" placeholder="ссылка https://…" maxlength="300" style="width:100%">
+    </div>
+    <button class="icon-small" data-action="i-del-good" data-i="${i}" title="Убрать товар">${icons.x}</button>
+  </div>`;
+}
+
+function readGoods(m) {
+  const goods = [];
+  m.querySelectorAll("[data-action=g-buy]").forEach((inp) => {
+    const linkInp = m.querySelector('[data-action=g-link][data-i="' + inp.dataset.i + '"]');
+    goods.push({ buy: inp.value.trim(), link: (linkInp?.value || "").trim() });
+  });
+  return goods;
+}
+
 function interestModal(p = {}) {
+  const goods = Array.isArray(p.items)
+    ? p.items.map((g) => ({ buy: g.buy || "", link: g.link || "" }))
+    : (p.buy || p.link ? [{ buy: p.buy || "", link: p.link || "" }] : [{ buy: "", link: "" }]);
   const m = openModal(`
     <div class="field"><label>Интерес / хобби</label>
       <input data-action="i-name" value="${esc(p.name || "")}" maxlength="60" placeholder="напр. вязание"></div>
-    <div class="field"><label>Что купить (подсказка)</label>
-      <input data-action="i-buy" value="${esc(p.buy || "")}" maxlength="120" placeholder="напр. пряжа, спицы"></div>
-    <div class="field"><label>Ссылка на товар</label>
-      <input data-action="i-link" value="${esc(p.link || "")}" maxlength="300" placeholder="https://…"></div>
+    <div class="field"><label>Что подарить (товары со ссылками)</label>
+      <div id="i-goods">${goods.map(goodsRow).join("")}</div>
+      <button class="btn small" data-action="i-add-good" style="margin-top:4px">＋ Добавить товар</button>
+    </div>
     <div class="modal-btns">
       <button class="btn primary" data-action="i-save">Сохранить</button>
       <button class="btn" data-action="close-modal">Отмена</button>
@@ -558,8 +590,7 @@ function viewProfile() {
       <div style="font-size:13px;color:var(--text2)">Интересы <b>${esc(partnerName())}</b>:
         ${paInt.length ? `<div class="list" style="margin-top:8px">${paInt.map((x) => `<div class="row">
           <div class="row-main"><div class="row-title">${esc(x.name)}</div>
-          ${x.buy ? `<div class="row-sub">🎁 ${esc(x.buy)}</div>` : `<div class="row-sub">—</div>`}
-          ${x.link ? `<button class="btn small" data-action="open-link" data-link="${esc(x.link)}" style="margin-top:6px">🔗 Открыть</button>` : ""}</div>
+          ${intGoodsHTML(intGoods(x)) || `<div class="row-sub">—</div>`}</div>
         </div>`).join("")}</div>` : `<span> пока не добавил(а)</span>`}
       </div>
     </div>
@@ -735,18 +766,6 @@ function saveEdit(m) {
   });
 }
 
-function saveSurprise(m) {
-  const id = m._id;
-  const chk = $("[data-action=f-surprise]", m)?.checked || false;
-  const rev = $("[data-action=f-reveal]", m)?.value || "";
-  let revealDate = 0;
-  if (chk && rev) {
-    const ts = new Date(rev).getTime();
-    if (ts > Date.now()) revealDate = ts;
-  }
-  patchItem(id, { surprise: chk, revealDate });
-}
-
 async function saveItemFromModal(m) {
   const g = (a) => $("[data-action=" + a + "]", m)?.value || "";
   const title = g("f-title").trim();
@@ -761,8 +780,6 @@ async function saveItemFromModal(m) {
     size: g("f-size"),
     image: m._image || "",
     voice: m._voice || "",
-    surprise: false,
-    revealDate: 0,
   };
   const btn = $("[data-action=save-item]", m);
   btn.disabled = true; btn.textContent = "Сохраняю…";
@@ -798,29 +815,29 @@ function openItem(id) {
   </div>
   ${Object.keys(it.reactions || {}).length ? `<div class="react-count">${Object.entries(it.reactions).map(([u, e]) => esc(S.data.names[u] || u) + " " + e).join(" · ")}</div>` : ""}`;
   const actions = [];
-  if (it.link) actions.push(`<button class="btn" data-action="open-link" data-link="${esc(it.link)}">🔗 Открыть ссылку</button>`);
+  if (it.link) actions.push(`<button class="btn small" data-action="open-link" data-link="${esc(it.link)}">🔗 Открыть ссылку</button>`);
   if (kind === "wishlist") {
     if (isMine && !it.gifted) {
       if (!it.bought) {
-        actions.push(`<button class="btn ${it.pinned ? "" : "primary"}" data-action="toggle-pin" data-id="${esc(id)}">${it.pinned ? "📌 Открепить" : "📌 Закрепить"}</button>`);
-        actions.push(`<button class="btn primary" data-action="buy" data-id="${esc(id)}">🛍 Я купил(а)!</button>`);
+        actions.push(`<button class="btn small ${it.pinned ? "" : "primary"}" data-action="toggle-pin" data-id="${esc(id)}">${it.pinned ? "📌 Открепить" : "📌 Закрепить"}</button>`);
+        actions.push(`<button class="btn small primary" data-action="buy" data-id="${esc(id)}">🛍 Я купил(а)!</button>`);
       } else {
-        actions.push(`<button class="btn" data-action="unbuy" data-id="${esc(id)}">Вернуть в «не куплено»</button>`);
+        actions.push(`<button class="btn small" data-action="unbuy" data-id="${esc(id)}">Вернуть в «не куплено»</button>`);
       }
     }
     if (!isMine && !it.gifted) {
-      actions.push(`<button class="btn primary" data-action="gift" data-id="${esc(id)}">🎀 Вручил(а)!</button>`);
-      actions.push(`<button class="btn" data-action="copy" data-id="${esc(id)}">${icons.copy} Мне тоже</button>`);
+      actions.push(`<button class="btn small primary" data-action="gift" data-id="${esc(id)}">🎀 Вручил(а)!</button>`);
+      actions.push(`<button class="btn small" data-action="copy" data-id="${esc(id)}">${icons.copy} Мне тоже</button>`);
       const inPlans = (S.data.plans || {})[id];
-      actions.push(`<button class="btn ${inPlans ? "" : "primary"}" data-action="plan-add" data-id="${esc(id)}">${icons.gift} ${inPlans ? "В планах · изменить" : "В планы"}</button>`);
+      actions.push(`<button class="btn small ${inPlans ? "" : "primary"}" data-action="plan-add" data-id="${esc(id)}">${icons.gift} ${inPlans ? "В планах · изменить" : "В планы"}</button>`);
     }
     if (it.gifted) actions.push(`<button class="btn small-link" data-action="restore-history" data-id="${esc(id)}">Вернуть в вишлист</button>`);
   }
   if (isMine) {
-    actions.push(`<button class="btn" data-action="edit-item" data-id="${esc(id)}">✏️ Редактировать</button>`);
-    actions.push(`<button class="btn danger" data-action="del-item" data-id="${esc(id)}">Удалить</button>`);
+    actions.push(`<button class="btn small" data-action="edit-item" data-id="${esc(id)}">✏️ Редактировать</button>`);
+    actions.push(`<button class="btn small danger" data-action="del-item" data-id="${esc(id)}">Удалить</button>`);
   } else if (kind !== "history") {
-    actions.push(`<button class="btn" data-action="del-item" data-id="${esc(id)}">Удалить</button>`);
+    actions.push(`<button class="btn small" data-action="del-item" data-id="${esc(id)}">Удалить</button>`);
   }
   const img = it.giftedPhoto || it.image;
   const meta = [];
@@ -831,20 +848,7 @@ function openItem(id) {
   if (it.type === "certificate") meta.push(`<span class="badge dark">🎫 сертификат</span>`);
   if (it.bought) meta.push(`<span class="badge ok">🛍 куплено</span>`);
   if (it.gifted && it.giftedAt) meta.push(`<span class="badge grad">🎀 вручено ${new Date(it.giftedAt).toLocaleDateString("ru-RU")}</span>`);
-  if (it.surprise) meta.push(`<span class="badge warn">🎁 сюрприз до ${it.revealDate ? fmt.format(it.revealDate) : "открытия"}</span>`);
   if (!isMine && (S.data.plans || {})[id]) meta.push(`<span class="badge grad">🎁 в планах</span>`);
-
-  const surpriseHTML = kind === "wishlist" && !isMine ? `
-    <div class="card" style="padding:12px;margin-top:10px;background:var(--surface2)">
-      <label class="switch" style="padding:0">
-        <span class="lbl">🎁 Сюрприз: скрыть от ${esc(S.data.names[it.userId] || "получателя")} до даты</span>
-        <span class="sw-track ${it.surprise ? "on" : ""}"><input type="checkbox" class="sw-hidden" data-action="f-surprise" ${it.surprise ? "checked" : ""}></span>
-      </label>
-      <div id="surprise-row" style="display:${it.surprise ? "block" : "none"};margin-top:10px">
-        <input type="datetime-local" data-action="f-reveal" value="${it.revealDate ? toDateLocal(it.revealDate) : ""}">
-        <button class="btn small primary" style="margin-top:8px" data-action="save-surprise">Сохранить сюрприз</button>
-      </div>
-    </div>` : "";
 
   const m = openModal(`
     ${img ? `<img class="detail-img" src="${esc(img)}" alt="">` : ""}
@@ -853,8 +857,7 @@ function openItem(id) {
     ${it.note ? `<div class="card" style="padding:12px;background:var(--surface2);font-size:14px;margin:10px 0">${esc(it.note)}</div>` : ""}
     ${it.voice ? `<div class="field"><label>Голосовое</label><audio src="${esc(it.voice)}" controls preload="none"></audio></div>` : ""}
     ${reactionsHTML}
-    ${surpriseHTML}
-    <div class="modal-btns">${actions.join("")}</div>`, kind === "history" ? "Вручённый подарок" : (isMine ? "Мой подарок" : "Подарок партнёра"));
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px">${actions.join("")}</div>`, kind === "history" ? "Вручённый подарок" : (isMine ? "Мой подарок" : "Подарок партнёра"));
   m._id = id;
 }
 
@@ -905,13 +908,26 @@ const actions = {
     list.splice(+b.dataset.index, 1);
     saveInterests(list);
   },
+  "i-add-good": (b) => {
+    const m = b.closest(".modal");
+    const goods = readGoods(m);
+    goods.push({ buy: "", link: "" });
+    $("#i-goods", m).innerHTML = goods.map(goodsRow).join("");
+  },
+  "i-del-good": (b) => {
+    const m = b.closest(".modal");
+    const goods = readGoods(m);
+    goods.splice(+b.dataset.i, 1);
+    if (!goods.length) goods.push({ buy: "", link: "" });
+    $("#i-goods", m).innerHTML = goods.map(goodsRow).join("");
+  },
   "i-save": (b) => {
     const m = b.closest(".modal");
-    const g = (a) => ($("[data-action=" + a + "]", m)?.value || "").trim();
-    const name = g("i-name");
+    const name = ($("[data-action=i-name]", m)?.value || "").trim();
     if (!name) { toast("Введите название интереса"); return; }
+    const items = readGoods(m).filter((g) => g.buy || g.link);
     const list = [...(S.data.interests?.[S.me] || [])];
-    const item = { name, buy: g("i-buy"), link: g("i-link") };
+    const item = { name, items };
     if (m._index >= 0) list[m._index] = item;
     else list.push(item);
     saveInterests(list);
@@ -922,7 +938,6 @@ const actions = {
   "offline": () => toast(navigator.onLine ? "Вы онлайн 🌐" : "Вы офлайн — работает из кэша"),
   "save-item": (b) => saveItemFromModal(b.closest(".modal")),
   "save-edit": (b) => saveEdit(b.closest(".modal")),
-  "save-surprise": (b) => saveSurprise(b.closest(".modal")),
   "crop-ok": (b) => { const m = b.closest(".modal"); m._crop && m._crop(); },
   "pick-photo": () => { },
   "remove-photo": (b) => removePhoto(b.closest("#up-area") || b.closest(".modal")),
@@ -1283,11 +1298,6 @@ function bindGlobal() {
   });
   document.addEventListener("change", (e) => {
     if (e.target?.dataset?.action === "bg-add") { pickBackground(e.target); return; }
-    if (e.target?.dataset?.action !== "f-surprise") return;
-    const row = e.target.closest(".modal")?.querySelector("#surprise-row");
-    if (row) row.style.display = e.target.checked ? "block" : "none";
-    const tr = e.target.closest(".switch")?.querySelector(".sw-track");
-    tr && tr.classList.toggle("on", e.target.checked);
   });
   document.addEventListener("input", (e) => {
     if (e.target.dataset?.action !== "search") return;

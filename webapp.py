@@ -111,11 +111,13 @@ def normalize_item(it):
         "category": "", "createdAt": 0, "price": "", "priority": "",
         "type": "gift", "bought": False, "boughtBy": "", "boughtAt": 0,
         "gifted": False, "giftedBy": "", "giftedAt": 0, "giftedPhoto": "",
-        "surprise": False, "revealDate": 0, "note": "", "pinned": False,
+        "note": "", "pinned": False,
         "reactions": {}, "voice": "", "size": "",
     }
     base.update(it or {})
     base["reactions"] = dict(base.get("reactions") or {})
+    base.pop("surprise", None)
+    base.pop("revealDate", None)
     return base
 
 
@@ -345,19 +347,12 @@ def remove_upload(url):
 
 def api_data(data, uid):
     partner = partner_of(data, uid)
-    now = now_ms()
-
-    def visible(it):
-        if it.get("surprise") and it.get("revealDate") and it["revealDate"] > now:
-            if it.get("userId") == uid:
-                return False
-        return True
 
     return {
         "ok": True,
         "users": data["users"],
         "names": data["names"],
-        "wishlist": [it for it in data["wishlist"] if visible(it)],
+        "wishlist": data["wishlist"],
         "ideas": data["ideas"],
         "history": data["history"],
         "events": data.get("events", []),
@@ -366,7 +361,7 @@ def api_data(data, uid):
         "backgrounds": data["backgrounds"],
         "backgroundIndex": data["backgroundIndex"],
         "interests": data.get("interests", {}),
-        "serverTime": now,
+        "serverTime": now_ms(),
         "partner": partner,
         "me": uid,
         "now": now_display(),
@@ -410,15 +405,12 @@ def _build_item(data, uid, body):
         "type": "certificate" if body.get("type") == "certificate" else "gift",
         "bought": False, "boughtBy": "", "boughtAt": 0,
         "gifted": False, "giftedBy": "", "giftedAt": 0, "giftedPhoto": "",
-        "surprise": bool(body.get("surprise")), "revealDate": _safe_int(body.get("revealDate")),
         "note": str(body.get("note") or "").strip()[:1000],
         "size": str(body.get("size") or "").strip()[:20],
         "pinned": bool(body.get("pinned")),
         "reactions": {}, "voice": str(body.get("voice") or "").strip()[:2000],
     }
     item = normalize_item(item)
-    if item.get("revealDate") and item["revealDate"] <= now_ms():
-        item["revealDate"] = 0
     return item
 
 
@@ -433,12 +425,6 @@ async def add_handler(request):
     body, err = await read_json(request)
     if err:
         return web.json_response({"ok": False, "error": err}, status=400)
-    rd = body.get("revealDate")
-    if rd not in (None, ""):
-        try:
-            int(rd)
-        except (TypeError, ValueError):
-            return web.json_response({"ok": False, "error": "Неверная дата"}, status=400)
     kind = body.get("kind", "wishlist")
     if kind not in ("wishlist", "ideas"):
         kind = "wishlist"
@@ -517,10 +503,6 @@ def _validated_patch(item, user, field, value):
         return "certificate" if value == "certificate" else "gift"
     if field == "pinned":
         return bool(value)
-    if field == "surprise":
-        return bool(value)
-    if field == "revealDate":
-        return int(value) if value else 0
     if field == "giftedPhoto":
         return str(value or "").strip()[:2000]
     raise ValueError(field)
@@ -559,14 +541,6 @@ async def patch_handler(request):
                 it["reactions"][uid] = emoji
             else:
                 it["reactions"].pop(uid, None)
-            continue
-        if field in ("surprise", "revealDate"):
-            try:
-                it[field] = _validated_patch(it, user, field, value)
-            except ValueError:
-                return web.json_response({"ok": False, "error": f"Плохое поле: {field}"}, status=400)
-            if field == "revealDate" and it.get("revealDate") and it["revealDate"] <= now:
-                it["revealDate"] = 0
             continue
         if field not in ("title", "link", "category", "price", "note", "size", "priority",
                          "type", "pinned", "giftedPhoto"):
@@ -760,11 +734,28 @@ async def interests_handler(request):
         if not isinstance(it, dict):
             continue
         name = str(it.get("name") or "").strip()[:60]
-        buy = str(it.get("buy") or "").strip()[:120]
-        link = sanitize_url(str(it.get("link") or "").strip())[:2000]
         if not name:
             continue
-        clean.append({"name": name, "buy": buy, "link": link})
+        goods = it.get("items")
+        if isinstance(goods, list):
+            items = []
+            for g in goods:
+                if not isinstance(g, dict):
+                    continue
+                buy = str(g.get("buy") or "").strip()[:120]
+                link = sanitize_url(str(g.get("link") or "").strip())[:2000]
+                if not buy and not link:
+                    continue
+                items.append({"buy": buy, "link": link})
+                if len(items) >= 10:
+                    break
+        else:
+            items = []
+            buy = str(it.get("buy") or "").strip()[:120]
+            link = sanitize_url(str(it.get("link") or "").strip())[:2000]
+            if buy or link:
+                items.append({"buy": buy, "link": link})
+        clean.append({"name": name, "items": items})
         if len(clean) >= 20:
             break
     data.setdefault("interests", {})[uid] = clean
