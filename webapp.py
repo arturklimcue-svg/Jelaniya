@@ -1076,19 +1076,23 @@ def create_app():
 
 
 async def static_css(request):
-    return web.FileResponse(BASE_DIR / "public" / "style.css", headers={"Content-Type": "text/css"})
+    return web.FileResponse(BASE_DIR / "public" / "style.css",
+                            headers={"Content-Type": "text/css", "Cache-Control": "public, max-age=0, must-revalidate"})
 
 
 async def static_js(request):
-    return web.FileResponse(BASE_DIR / "public" / "script.js", headers={"Content-Type": "text/javascript"})
+    return web.FileResponse(BASE_DIR / "public" / "script.js",
+                            headers={"Content-Type": "text/javascript", "Cache-Control": "public, max-age=0, must-revalidate"})
 
 
 async def static_sw(request):
-    return web.FileResponse(BASE_DIR / "public" / "sw.js", headers={"Content-Type": "text/javascript"})
+    return web.FileResponse(BASE_DIR / "public" / "sw.js",
+                            headers={"Content-Type": "text/javascript", "Cache-Control": "no-cache, must-revalidate"})
 
 
 async def static_manifest(request):
-    return web.FileResponse(BASE_DIR / "public" / "manifest.json", headers={"Content-Type": "application/manifest+json"})
+    return web.FileResponse(BASE_DIR / "public" / "manifest.json",
+                            headers={"Content-Type": "application/manifest+json", "Cache-Control": "public, max-age=0, must-revalidate"})
 
 
 async def index(request):
@@ -1097,7 +1101,8 @@ async def index(request):
         text = path.read_text(encoding="utf-8")
     except OSError:
         return web.Response(text="index.html не найден", status=404)
-    return web.Response(text=text, content_type="text/html", charset="utf-8")
+    return web.Response(text=text, content_type="text/html", charset="utf-8",
+                        headers={"Cache-Control": "no-cache, must-revalidate"})
 
 
 def start_background(app):
