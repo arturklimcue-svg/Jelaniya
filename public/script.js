@@ -562,10 +562,13 @@ function historyRows() {
 /* ============================ profile ============================ */
 
 function interestRow(int) {
-  return `<div class="int-row" style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-    <input data-action="int-name" value="${esc(int.name || "")}" placeholder="интерес, напр. вязание" maxlength="60" style="flex:1;min-width:0">
-    <input data-action="int-buy" value="${esc(int.buy || "")}" placeholder="что купить" maxlength="120" style="flex:1.3;min-width:0">
-    <button class="icon-small" data-action="del-interest" title="Убрать">${icons.x}</button>
+  return `<div class="int-row">
+    <div class="int-row-2">
+      <input data-action="int-name" value="${esc(int.name || "")}" placeholder="интерес, напр. вязание" maxlength="60">
+      <input data-action="int-buy" value="${esc(int.buy || "")}" placeholder="что купить, напр. пряжа" maxlength="120">
+      <button class="icon-small" data-action="del-interest" title="Убрать">${icons.x}</button>
+    </div>
+    <input data-action="int-link" value="${esc(int.link || "")}" placeholder="Ссылка на товар (напр. на пряжу)" maxlength="300">
   </div>`;
 }
 
@@ -612,7 +615,8 @@ function viewProfile() {
       <div style="font-size:13px;color:var(--text2)">Интересы <b>${esc(partnerName())}</b>:
         ${paInt.length ? `<div class="list" style="margin-top:8px">${paInt.map((x) => `<div class="row">
           <div class="row-main"><div class="row-title">${esc(x.name)}</div>
-          ${x.buy ? `<div class="row-sub">🎁 ${esc(x.buy)}</div>` : `<div class="row-sub">—</div>`}</div>
+          ${x.buy ? `<div class="row-sub">🎁 ${esc(x.buy)}</div>` : `<div class="row-sub">—</div>`}
+          ${x.link ? `<button class="btn small" data-action="open-link" data-link="${esc(x.link)}" style="margin-top:6px">🔗 Открыть</button>` : ""}</div>
         </div>`).join("")}</div>` : `<span> пока не добавил(а)</span>`}
       </div>
     </div>
@@ -973,6 +977,7 @@ const actions = {
     const list = [...document.querySelectorAll("#interests-list .int-row")].map((r) => ({
       name: r.querySelector("[data-action=int-name]")?.value.trim() || "",
       buy: r.querySelector("[data-action=int-buy]")?.value.trim() || "",
+      link: r.querySelector("[data-action=int-link]")?.value.trim() || "",
     })).filter((r) => r.name);
     api("/api/interests", { method: "POST", body: JSON.stringify({ list }) }).then((d) => {
       if (d.ok) { S.data = d; hapticOk(); toast("Сохранено"); render(); }

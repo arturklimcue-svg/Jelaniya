@@ -787,9 +787,10 @@ async def interests_handler(request):
             continue
         name = str(it.get("name") or "").strip()[:60]
         buy = str(it.get("buy") or "").strip()[:120]
+        link = sanitize_url(str(it.get("link") or "").strip())[:2000]
         if not name:
             continue
-        clean.append({"name": name, "buy": buy})
+        clean.append({"name": name, "buy": buy, "link": link})
         if len(clean) >= 20:
             break
     data.setdefault("interests", {})[uid] = clean

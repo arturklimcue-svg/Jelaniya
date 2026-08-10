@@ -430,17 +430,26 @@ async def test_copy_keeps_size(pair):
 async def test_interests(pair):
     client, uid_a, uid_b, ini_a, ini_b = pair
     r = await client.post("/api/interests?" + urlencode({"initData": ini_a}),
-                          json={"list": [{"name": "Вязание", "buy": "пряжа, спицы"},
+                          json={"list": [{"name": "Вязание", "buy": "пряжа, спицы", "link": "https://shop.ru/yarn"},
                                          {"name": "", "buy": "мусор"},
                                          {"name": "Кофе", "buy": ""}]})
     assert r.status == 200
     d = await get_data(client, ini_b)
-    assert d["interests"][uid_a] == [{"name": "Вязание", "buy": "пряжа, спицы"},
-                                     {"name": "Кофе", "buy": ""}]
+    assert d["interests"][uid_a] == [{"name": "Вязание", "buy": "пряжа, спицы", "link": "https://shop.ru/yarn"},
+                                     {"name": "Кофе", "buy": "", "link": ""}]
     r = await client.post("/api/interests?" + urlencode({"initData": ini_a}), json={"list": []})
     assert r.status == 200
     d = await get_data(client, ini_a)
     assert d["interests"][uid_a] == []
+
+
+async def test_interests_link_normalized(pair):
+    client, uid_a, _, ini_a, _ = pair
+    r = await client.post("/api/interests?" + urlencode({"initData": ini_a}),
+                          json={"list": [{"name": "Бег", "link": "shop.ru/krossovki"}]})
+    assert r.status == 200
+    d = await get_data(client, ini_a)
+    assert d["interests"][uid_a] == [{"name": "Бег", "buy": "", "link": "https://shop.ru/krossovki"}]
 
 
 async def test_interests_unauthorized(api):
