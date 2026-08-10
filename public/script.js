@@ -419,32 +419,14 @@ function viewIdeas() {
     <button class="icon-small" data-action="del-idea" data-id="${esc(it.id)}" title="Удалить">${icons.x}</button>
   </div>`).join("");
 
-  const gen = S.data.partner ? `<button class="btn primary" data-action="gen-ideas" style="margin-bottom:12px">${icons.dice} Подобрать идеи для партнёра</button>` : "";
   return `<section class="view" style="display:none">
     ${topbar("Идеи подарков", "копилка и генератор идей")}
-    ${gen}
-    <div class="card" style="padding:14px;margin-bottom:14px">
-      <div class="field"><label>Новая идея</label>
-        <input data-action="idea-title" placeholder="Что-нибудь классное…" maxlength="200"></div>
-      <div class="row-2">
-        <div class="field"><label>Ссылка (необязательно)</label>
-          <input data-action="idea-link" placeholder="https://…"></div>
-        <div class="field"><label>Цена</label>
-          <input data-action="idea-price" placeholder="напр. 1 500 ₽"></div>
-      </div>
-      <div class="row-2">
-        <div class="field"><label>Категория</label>
-          <select data-action="idea-cat">${["", ...catList()].map((c) => `<option value="${esc(c)}">${esc(c || "—")}</option>`).join("")}</select></div>
-        <div class="field"><label>Приоритет</label>
-          <select data-action="idea-prio">${Object.entries(PRIORITY).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
-      </div>
-      <button class="btn primary" data-action="add-idea">Сохранить идею</button>
-    </div>
-    ${rows ? `<div class="list">${rows}</div>` : `<div class="empty"><span class="emo">💡</span>Пока нет идей. Добавьте первую — это не обязательно для подарка.</div>`}
+    ${genIdeasBlock()}
+    ${rows ? `<div class="list">${rows}</div>` : `<div class="empty"><span class="emo">💡</span>Пока нет идей. Нажмите ＋, чтобы добавить свою.</div>`}
   </section>`;
 }
 
-function genIdeas() {
+function genIdeasBlock() {
   const d = S.data;
   const pool = [];
   const bank = [
@@ -464,13 +446,14 @@ function genIdeas() {
   }
   const all = pool.length ? pool : bank;
   const pick = [...all].sort(() => Math.random() - 0.5).slice(0, 5);
-  const m = openModal(`<div class="empty" style="padding:6px 0"><span class="emo">🎲</span>Подборка для <b>${esc(partnerName())}</b></div>
+  return `<div class="card" style="padding:14px;margin-bottom:14px" data-gen>
+    <div style="font-weight:800">${icons.dice} Подборка идей</div>
+    <div style="font-size:12.5px;color:var(--text2);margin:2px 0 8px">Генерируется из ваших идей и идей партнёра. «добавить ›» положит идею в копилку.</div>
     <div class="list">${pick.map((t) => `<button class="row" data-action="prefill-idea" data-title="${esc(t)}" style="width:100%;text-align:left">
       <div class="row-main"><div class="row-title">${esc(t)}</div></div><span style="color:var(--accent)">добавить ›</span>
     </button>`).join("")}</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px"><button class="btn fit" data-action="gen-again">${icons.dice} Перемешать</button></div>`, "Генератор идей");
-  m._genPick = pick;
-  return pick;
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px"><button class="btn fit" data-action="gen-again">${icons.dice} Перемешать</button></div>
+  </div>`;
 }
 
 /* ============================ history ============================ */
@@ -882,9 +865,7 @@ const actions = {
   "open-item": (b) => openItem(b.dataset.id),
   "add-cat": () => promptCat(),
   "random": () => randomPick(),
-  "add-idea": () => addIdeaQuick(),
-  "gen-ideas": () => genIdeas(),
-  "gen-again": (b) => { b.closest(".modal").remove(); genIdeas(); },
+  "gen-again": () => { const g = $("[data-gen]"); if (g) g.outerHTML = genIdeasBlock(); },
   "prefill-idea": (b) => { closeModal(); openAddModal({ title: b.dataset.title }); },
   "to-item": (b) => api("/api/ideas/" + b.dataset.id + "/to-item", { method: "POST" }).then((d) => { if (d.ok) { S.data = d; hapticOk(); render(); } }),
   "del-idea": (b) => confirmModal("Удалить идею?", () =>
@@ -979,26 +960,6 @@ function promptCat() {
   if (!name || !name.trim()) return;
   api("/api/categories", { method: "POST", body: JSON.stringify({ name: name.trim() }) }).then((d) => {
     if (d.ok) { S.data = d; render(); }
-  });
-}
-
-function addIdeaQuick() {
-  const title = $("#main [data-action=idea-title]")?.value?.trim();
-  if (!title) { toast("Введите название идеи"); return; }
-  const payload = {
-    title,
-    link: $("#main [data-action=idea-link]")?.value,
-    category: $("#main [data-action=idea-cat]")?.value,
-    price: $("#main [data-action=idea-price]")?.value,
-    priority: $("#main [data-action=idea-prio]")?.value,
-  };
-  api("/api/items", { method: "POST", body: JSON.stringify(Object.assign({ kind: "ideas" }, payload)) }).then((d) => {
-    if (d.ok) {
-      S.data = d;
-      ["idea-title", "idea-link", "idea-price"].forEach((n) => { const x = $("#main [data-action=" + n + "]"); if (x) x.value = ""; });
-      hapticOk();
-      render();
-    } else toast(d.error);
   });
 }
 
