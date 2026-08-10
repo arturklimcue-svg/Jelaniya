@@ -49,8 +49,7 @@ async def cmd_start(message: Message):
         "Как пользоваться:\n"
         "🎁 Откройте вишлист в меню — загадывайте желания и смотрите список партнёра\n"
         "🔗 Просто перешлите сюда ссылку на вещь — я добавлю её в ваш вишлист\n"
-        "🔔 Бот пришлёт уведомления, когда партнёр добавит или купит подарок\n"
-        "📅 Напомню о важных датах"
+        "🔔 Бот пришлёт уведомление, когда партнёр добавит подарок\n"
     )
     url = webapp_url()
     if url:
@@ -72,7 +71,7 @@ async def cmd_help(message: Message):
         "• Перешлите ссылку сюда — она попадёт в ваш вишлист\n"
         "• Партнёр увидит ваш список, а вы — его\n"
         "• Покупку и вручение отмечайте в приложении\n"
-        "• Бот напомнит о важных датах и пришлёт открытку"
+        "• Бот пришлёт уведомление, когда партнёр добавит подарок"
     )
 
 
@@ -96,9 +95,7 @@ async def forward_link(message: Message):
 
 
 def _snapshot(data):
-    items = [(i["id"], i["userId"], i.get("bought"), i.get("gifted")) for i in data["wishlist"]]
-    hist = [(i["id"], i.get("giftedBy")) for i in data["history"]]
-    return items, hist
+    return {(i["id"], i["userId"], i.get("bought"), i.get("gifted")) for i in data["wishlist"]}
 
 
 async def notify_other(data, owner_uid, text):
@@ -113,32 +110,12 @@ async def notify_other(data, owner_uid, text):
 
 
 async def notify_changes(data, prev, snap):
-    prev_items = {i[0]: i for i in prev[0]}
-    cur_items = {i[0]: i for i in snap[0]}
-    prev_hist = {i[0]: i for i in prev[1]}
-    cur_hist = {i[0]: i for i in snap[1]}
-    for iid, rec in cur_items.items():
-        _, owner, bought, gifted = rec
+    for iid, owner, _bought, _gifted in snap - prev:
         it = next((x for x in data["wishlist"] if x["id"] == iid), None)
-        if not it:
+        if not it or it.get("surprise"):
             continue
-        if iid not in prev_items:
-            if not it.get("surprise"):
-                await notify_other(data, owner,
-                    f"🎁 <b>{esc(webapp.display_name(data, owner))}</b> добавил(а) подарок: <b>{esc(it['title'])}</b>")
-        else:
-            old = prev_items[iid]
-            if not old[2] and it.get("bought"):
-                buyer = esc(webapp.display_name(data, it.get("boughtBy")) or "кто-то")
-                await notify_other(data, owner, f"🛍 <b>{buyer}</b> купил(а): <b>{esc(it['title'])}</b> 🎉")
-            if not old[3] and it.get("gifted"):
-                await notify_other(data, owner, f"🎀 Подарок вручён: <b>{esc(it['title'])}</b>!")
-    for hid in cur_hist:
-        if hid in prev_hist:
-            continue
-        it = next((x for x in data["history"] if x["id"] == hid), None)
-        if it:
-            await notify_other(data, it["userId"], f"🎀 <b>{esc(it['title'])}</b> — подарок вручён! История пополнена.")
+        await notify_other(data, owner,
+            f"🎁 <b>{esc(webapp.display_name(data, owner))}</b> добавил(а) подарок: <b>{esc(it['title'])}</b>")
 
 
 async def notifier_loop():
@@ -156,52 +133,9 @@ async def notifier_loop():
         await asyncio.sleep(45)
 
 
-async def check_reminders():
-    async with webapp.DATA_LOCK:
-        data = webapp.load_data()
-        sent = data.setdefault("remindersSent", {})
-        now = webapp.now_ms()
-        changed = False
-        for ev in data["events"]:
-            diff_days = round((ev["dateTs"] - now) / 86400000)
-            if diff_days not in (0, 1, 2, 3, 7):
-                continue
-            key = f"{ev['id']}:{diff_days}"
-            keys = sent.get(ev["id"], [])
-            if key in keys:
-                continue
-            keys.append(key)
-            sent[ev["id"]] = keys
-            changed = True
-            if diff_days == 0:
-                text = f"🎉 <b>Сегодня: {esc(ev['title'])}!</b>\n{esc(ev.get('card', '')) or 'С праздником! 🥳'}"
-            elif diff_days == 1:
-                text = f"⏰ <b>Завтра: {esc(ev['title'])}</b> — не забудьте про подарок!"
-            else:
-                text = f"🗓 Через {diff_days} дн: <b>{esc(ev['title'])}</b>"
-            for uid in list(data["chats"]):
-                try:
-                    await bot.send_message(data["chats"][uid], text)
-                except Exception:
-                    pass
-        if changed:
-            webapp.save_data(data)
-
-
-async def reminder_loop():
-    await asyncio.sleep(5)
-    while True:
-        try:
-            await check_reminders()
-        except Exception:
-            logging.exception("reminders")
-        await asyncio.sleep(60)
-
-
 async def setup():
     dp["session"] = aiohttp.ClientSession()
     asyncio.create_task(notifier_loop())
-    asyncio.create_task(reminder_loop())
 
 
 async def stop():

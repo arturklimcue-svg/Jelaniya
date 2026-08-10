@@ -133,6 +133,7 @@ function uploadFile(file) {
   else if (t.startsWith("image/")) ext = "jpg";
   else if (t === "audio/ogg" || t === "audio/opus") ext = "ogg";
   else if (t === "audio/mp4" || t === "audio/m4a") ext = "m4a";
+  else if (t === "audio/wav" || t === "audio/x-wav" || t === "audio/x-pn-wav") ext = "wav";
   let name = file.name || "file";
   if (!/\.[a-z0-9]{2,5}$/i.test(name)) name += "." + ext;
   fd.append("file", file, name);
@@ -190,9 +191,8 @@ function render() {
   else if (v === "plans") main.innerHTML = viewPlans();
   else if (v === "ideas") main.innerHTML = viewIdeas();
   else if (v === "calendar") main.innerHTML = viewCalendar();
-  else if (v === "recap") main.innerHTML = viewRecap();
-  else if (v === "history") main.innerHTML = viewHistory();
   else if (v === "profile") main.innerHTML = viewProfile();
+  else { S.view = "home"; main.innerHTML = viewHome(); }
   main.querySelectorAll(".view").forEach((x) => x.style.display = "block");
   window.scrollTo({ top: 0 });
   updateTabbar();
@@ -206,8 +206,26 @@ function topbar(title, sub, actions = "") {
 }
 
 function myName() { return S.data?.names?.[S.me] || "я"; }
-function partnerName() { return S.data?.partner || "партнёр"; }
+function partnerName() { const p = S.data?.partner; return (p && S.data.names?.[p]) || p || "партнёр"; }
 function catList() { return S.data?.categories?.[S.me] || []; }
+function catOptions(sel) {
+  const cats = catList();
+  const opts = cats.map((c) => `<option value="${esc(c)}" ${c === sel ? "selected" : ""}>${esc(c)}</option>`);
+  if (sel && !cats.includes(sel)) opts.unshift(`<option value="${esc(sel)}" selected>${esc(sel)}</option>`);
+  return opts.join("");
+}
+function bindCatNew(m, a, a2) {
+  const sel = $("[data-action=" + a + "]", m);
+  const inp = $("[data-action=" + a2 + "]", m);
+  if (!sel || !inp) return;
+  inp.style.display = sel.value === "__new__" ? "block" : "none";
+  sel.addEventListener("change", () => { inp.style.display = sel.value === "__new__" ? "block" : "none"; });
+}
+function catFrom(m, a, a2) {
+  const v = $("[data-action=" + a + "]", m)?.value || "";
+  if (v !== "__new__") return v;
+  return ($("[data-action=" + a2 + "]", m)?.value || "").trim();
+}
 
 /* ============================ home ============================ */
 
@@ -234,10 +252,22 @@ function viewHome() {
     </div>
   </div>`;
 
-  const navBtn = (v, ico, t, sub) => `<button class="btn" data-action="nav" data-view="${v}" style="display:flex;justify-content:flex-start;text-align:left;align-items:center;gap:12px">
-    <span style="width:38px;height:38px;border-radius:12px;background:var(--surface2);display:inline-flex;align-items:center;justify-content:center;flex:none">${ico}</span>
-    <span style="flex:1"><b>${esc(t)}</b><br><span style="font-size:12px;color:var(--text2)">${esc(sub)}</span></span>
-  </button>`;
+  const plans = Object.entries(d.plans || {});
+  const plansHTML = plans.length
+    ? `<div class="list" style="margin-bottom:14px">${plans.slice(0, 5).map(([id, p]) => `
+      <button class="row" data-action="open-plan" data-id="${esc(id)}" style="width:100%;text-align:left;cursor:pointer">
+        <div class="row-avatar" ${p.src && p.src.image ? `style="background-image:url('${esc(p.src.image)}')"` : ""}></div>
+        <div class="row-main">
+          <div class="row-title">${esc((p.src && p.src.title) || "Без названия")}</div>
+          <div class="row-sub">${esc(p.category || "Без категории")}${p.note ? " · " + esc(p.note) : ""}</div>
+        </div>
+        <span style="color:var(--accent)">›</span>
+      </button>`).join("")}
+    </div>
+    <button class="btn" data-action="nav" data-view="plans" style="margin-bottom:14px">Все планы (${plans.length})</button>`
+    : `<button class="card empty" data-action="nav" data-view="plans" style="cursor:pointer;width:100%;padding:14px;margin-bottom:14px;border:none;background:var(--surface);text-align:left">
+      <span class="emo">🎁</span>Планов пока нет — отметьте подарок партнёра в вишлисте.<br><span class="small-link">Открыть вишлист партнёра →</span>
+    </button>`;
 
   return `<section class="view" style="display:none">
     ${topbar("Вишлист вдвоём", "общий список подарков для двоих")}
@@ -251,15 +281,8 @@ function viewHome() {
         <div style="flex:1"><b>${esc(nextEv.title)}</b><br><span style="font-size:12.5px;color:var(--text2)">${fmt.format(nextEv.dateTs)} · ${countdown(nextEv.dateTs)}</span></div>
         <span class="icon-small">›</span>
       </div></button>` : ""}
-    <div class="section-title">Разделы</div>
-    <div style="display:flex;flex-direction:column;gap:10px">
-      ${navBtn("wishlist", icons.heart, "Вишлист", `загадано: ${mine.length}, у партнёра: ${theirs.length}`)}
-      ${navBtn("ideas", icons.dice, "Идеи подарков", `в копилке: ${d.ideas.length}`)}
-      ${navBtn("calendar", "📅", "Календарь дат", `событий: ${d.events.length}`)}
-      ${navBtn("recap", "📊", "Рекап года", "что загадали и подарили")}
-      ${navBtn("history", "🎁", "История подарков", `вручено: ${d.history.length}`)}
-      ${navBtn("profile", "⚙️", "Настройки", "категории, фоны, тема, события")}
-    </div>
+    <div class="section-title">Мои планы</div>
+    ${plansHTML}
   </section>`;
 }
 
@@ -330,20 +353,25 @@ function viewPlans() {
       <div class="empty"><span class="emo">🎁</span>Здесь будут подарки, которые вы отметили из вишлиста ${esc(partnerName())}.<br>Откройте его подарок и нажмите «В планы».</div>
     </section>`;
   }
-  const byCat = {};
-  plans.forEach(([id, p]) => { const c = p.category || ""; (byCat[c] = byCat[c] || []).push([id, p]); });
-  const cats = catList();
-  const order = cats.filter((c) => byCat[c]);
-  Object.keys(byCat).forEach((c) => { if (c && !cats.includes(c)) order.push(c); });
-  if (byCat[""]) order.push("");
-  const rows = order.map((c, idx) => {
-    const items = byCat[c].map(([id, p]) => planCard(id, p)).join("");
-    return `<div class="section-title" style="margin-top:${idx === 0 ? 0 : 18}px">${c ? esc(c) : "Без категории"}</div>${items}`;
+  const evs = S.data.events || [];
+  const byEv = new Map();
+  plans.forEach(([id, p]) => { const key = p.eventId || ""; (byEv.get(key) || byEv.set(key, []).get(key)).push([id, p]); });
+  const order = [];
+  evs.forEach((e) => { if (byEv.has(e.id)) { order.push([e.title, byEv.get(e.id)]); byEv.delete(e.id); } });
+  if (byEv.has("")) order.push(["Без праздника", byEv.get("")]);
+  byEv.forEach((arr, key) => { if (key) order.push(["Праздник", arr]); });
+  const rows = order.map(([title, arr], idx) => {
+    const items = arr.map(([id, p]) => planCard(id, p)).join("");
+    return `<div class="section-title" style="margin-top:${idx === 0 ? 0 : 18}px">${esc(title)}</div>${items}`;
   }).join("");
   return `<section class="view" style="display:none">
     ${topbar("Мои планы", `выбрано для ${esc(partnerName())}`)}
     ${rows}
   </section>`;
+}
+
+function plansForEvent(evId) {
+  return Object.entries(S.data.plans || {}).filter(([id, p]) => p.eventId === evId);
 }
 
 function planCard(id, p) {
@@ -367,9 +395,13 @@ function planCard(id, p) {
   </div>`;
 }
 
-function openPlanModal(id) {
+function openPlanModal(id, evId) {
   const cur = (S.data.plans || {})[id];
+  const evs = (S.data.events || []).map((e) => `<option value="${esc(e.id)}" ${(cur && cur.eventId === e.id) || (!cur && evId === e.id) ? "selected" : ""}>${esc(e.title)}</option>`).join("");
   const m = openModal(`
+    <div class="field"><label>Праздник (необязательно)</label>
+      <select data-action="plan-ev"><option value="">— не привязан —</option>${evs}</select>
+    </div>
     <div class="field"><label>Категория</label>
       <select data-action="plan-cat">${["", ...catList()].map((c) => `<option value="${esc(c)}" ${cur && cur.category === c ? "selected" : ""}>${esc(c || "—")}</option>`).join("")}</select>
     </div>
@@ -475,6 +507,7 @@ function viewCalendar() {
   const rows = evs.map((e) => {
     const isToday = new Date(e.dateTs).toDateString() === today;
     const due = e.dateTs <= Date.now();
+    const myPlans = plansForEvent(e.id);
     return `<div class="card ev" style="padding:14px;margin-bottom:10px">
       <div class="ev-card-bg"></div>
       <div style="display:flex;align-items:center;gap:12px;position:relative">
@@ -489,6 +522,14 @@ function viewCalendar() {
         ${due ? `<button class="btn small primary" data-action="open-card" data-id="${esc(e.id)}">Открытка</button>` : ""}
         <button class="icon-small" data-action="del-event" data-id="${esc(e.id)}" title="Удалить">${icons.x}</button>
       </div>
+      ${myPlans.length ? `<div style="position:relative;margin-top:10px;border-top:1px solid var(--surface2);padding-top:10px">
+        <div style="font-size:12.5px;font-weight:700;color:var(--text2);margin-bottom:6px">🎁 Мои планы на праздник</div>
+        ${myPlans.map(([pid, p]) => `<div style="display:flex;align-items:center;gap:8px;font-size:13.5px;margin-bottom:6px">
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((p.src && p.src.title) || "—")}</span>
+          <button class="icon-small" data-action="plan-remove" data-id="${esc(pid)}" title="Убрать">${icons.x}</button>
+        </div>`).join("")}
+      </div>` : ""}
+      <button class="btn small primary" data-action="plan-pick" data-event="${esc(e.id)}" style="position:relative;margin-top:10px">🎁 Выбрать подарок партнёра</button>
     </div>`;
   }).join("");
   return `<section class="view" style="display:none">
@@ -505,77 +546,34 @@ function viewCalendar() {
   </section>`;
 }
 
-/* ============================ history & recap ============================ */
+/* ============================ history ============================ */
 
-function viewHistory() {
-  const rows = S.data.history.map((it) => `<div class="row">
-    <div class="row-avatar" ${(it.giftedPhoto || it.image) ? `style="background-image:url('${esc(it.giftedPhoto || it.image)}')"` : ""}></div>
-    <div class="row-main">
+function historyRows() {
+  return S.data.history.map((it) => `<div class="row">
+    <button class="row-avatar" data-action="open-item" data-id="${esc(it.id)}" ${(it.giftedPhoto || it.image) ? `style="background-image:url('${esc(it.giftedPhoto || it.image)}')"` : ""}></button>
+    <button class="row-main" data-action="open-item" data-id="${esc(it.id)}" style="text-align:left;flex:1;min-width:0;background:none;border:none;padding:0;cursor:pointer">
       <div class="row-title">${esc(it.title)}</div>
       <div class="row-sub">🎀 вручено ${it.giftedAt ? new Date(it.giftedAt).toLocaleDateString("ru-RU") : ""} · дарил(а) ${it.giftedBy ? esc(S.data.names[it.giftedBy] || "кто-то") : "?"}</div>
-    </div>
+    </button>
     <button class="icon-small" data-action="del-history" data-id="${esc(it.id)}" title="Удалить из истории">${icons.x}</button>
   </div>`).join("");
-  return `<section class="view" style="display:none">
-    ${topbar("История подарков", "что уже вручили")}
-    ${rows ? `<div class="list">${rows}</div>` : `<div class="empty"><span class="emo">🎀</span>Здесь появятся вручённые подарки с фото.</div>`}
-  </section>`;
-}
-
-function viewRecap() {
-  const d = S.data;
-  const mine = d.wishlist.filter((i) => i.userId === S.me);
-  const total = mine.length + d.history.length;
-  const bought = mine.filter((i) => i.bought).length + d.history.length;
-  const gifted = d.history.length;
-  const cats = {};
-  [...d.wishlist, ...d.history].forEach((i) => { if (i.category) cats[i.category] = (cats[i.category] || 0) + 1; });
-  const topCat = Object.entries(cats).sort((a, b) => b[1] - a[1])[0];
-  const months = {};
-  [...d.wishlist, ...d.history].forEach((i) => { const m = new Date(i.createdAt).getMonth(); months[m] = (months[m] || 0) + 1; });
-  const topMonth = Object.entries(months).sort((a, b) => b[1] - a[1])[0];
-  const mNames = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
-  return `<section class="view" style="display:none">
-    ${topbar("Рекап года", `итоги ${new Date().getFullYear()} года`)}
-    <div class="stat-grid">
-      <div class="card stat-card"><div class="stat-num">${total}</div><div class="stat-lbl">загадано подарков</div></div>
-      <div class="card stat-card"><div class="stat-num">${bought}</div><div class="stat-lbl">куплено</div></div>
-      <div class="card stat-card"><div class="stat-num">${gifted}</div><div class="stat-lbl">вручено</div></div>
-      <div class="card stat-card"><div class="stat-num">${d.events.length}</div><div class="stat-lbl">отмечено дат</div></div>
-    </div>
-    <div class="card" style="padding:14px;margin-bottom:14px">
-      <div style="font-weight:800;margin-bottom:10px">Интересное</div>
-      <div style="font-size:13.5px;line-height:1.9">
-        ${topCat ? `🗂 Любимая категория: <b>${esc(topCat[0])}</b> (${topCat[1]})<br>` : ""}
-        ${topMonth ? `🗓 Самый активный месяц: <b>${mNames[topMonth[0]]}</b> (${topMonth[1]})<br>` : ""}
-        💝 Идей в копилке: <b>${d.ideas.length}</b><br>
-        🤝 Партнёр загадал: <b>${d.wishlist.filter((i) => i.userId !== S.me).length}</b><br>
-        ${gifted ? `📸 Фото вручений: <b>${d.history.filter((h) => h.giftedPhoto).length}</b>` : ""}
-      </div>
-    </div>
-    <button class="btn primary" data-action="export">📋 Поделиться вишлистом</button>
-  </section>`;
 }
 
 /* ============================ profile ============================ */
 
 function viewProfile() {
   const d = S.data;
+  const aboutOther = d.partner ? (d.about?.[d.partner] || "") : "";
   const bgs = d.backgrounds || [];
   const evs = d.events.map((e) => `<div class="row"><div class="row-main"><div class="row-title">${esc(e.title)}</div>
     <div class="row-sub">${fmtFull.format(e.dateTs)}</div></div>
     <button class="icon-small" data-action="del-event" data-id="${esc(e.id)}">${icons.x}</button></div>`).join("");
   const theme = localStorage.getItem("wltheme") || "auto";
-  const ach = achievements();
-  const achHTML = ach.map((a) => `<div class="ach-item">
-    <div class="ach-ico ${a.ok ? "" : "locked"}">${a.ico}</div>
-    <div class="row-main"><div style="font-weight:700">${esc(a.t)}</div><div style="font-size:12.5px;color:var(--text2)">${esc(a.d)}</div></div>
-    ${a.ok ? `<div class="ach-done">✓</div>` : ""}
-  </div>`).join("");
+  const hist = historyRows();
   const themeSel = (v, lbl) => `<button class="chip ${theme === v ? "active" : ""}" data-action="theme" data-val="${v}">${lbl}</button>`;
 
   return `<section class="view" style="display:none">
-    ${topbar("Моё", `${esc(myName())} × ${esc(S.data.partner || "—")}`)}
+    ${topbar("Моё", `${esc(myName())} × ${esc(partnerName())}`)}
     <div class="card" style="padding:14px;margin-bottom:14px">
       <div class="section-title" style="margin-top:0">Тема</div>
       <div class="chips">${themeSel("auto", "Авто")}${themeSel("light", "Светлая")}${themeSel("dark", "Тёмная")}</div>
@@ -594,37 +592,30 @@ function viewProfile() {
         <button class="chip add" data-action="add-cat">+</button>
       </div>
     </div>
+    <div class="section-title">Интересы и хобби</div>
+    <div class="card" style="padding:14px;margin-bottom:14px">
+      <div style="font-size:12.5px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px">Мои интересы</div>
+      <textarea data-action="about-text" maxlength="600" placeholder="Что нравится: фильмы, хобби, коллекции, любимые бренды…" style="margin-top:6px">${esc(S.data.about?.[S.me] || "")}</textarea>
+      <button class="btn primary" data-action="save-about" style="margin-top:8px">Сохранить</button>
+      <div class="divider"></div>
+      <div style="font-size:13px;color:var(--text2);white-space:pre-wrap">Интересы <b>${esc(partnerName())}</b>: ${aboutOther ? `<span style="color:var(--text)">${esc(aboutOther)}</span>` : "пока не добавил(а)"}</div>
+    </div>
     <div class="section-title">События и открытки</div>
     <div class="card" style="padding:14px;margin-bottom:14px">
       ${evs || `<span style="font-size:13.5px;color:var(--text2)">Событий нет — добавьте в разделе «Даты».</span>`}
     </div>
-    <div class="section-title">Достижения</div>
-    ${achHTML}
-    <div class="divider"></div>
+    <div class="section-title">История подарков</div>
+    <div class="card" style="padding:14px;margin-bottom:14px">
+      ${hist ? `<div class="list">${hist}</div>` : `<span style="font-size:13.5px;color:var(--text2)">Вручённых подарков пока нет.</span>`}
+    </div>
+    <div class="section-title">Поделиться</div>
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn" data-action="export">📋 Поделиться вишлистом</button>
+      <button class="btn" data-action="export-csv">⬇️ Скачать CSV</button>
       <button class="btn" data-action="offline">🛜 Проверить офлайн</button>
     </div>
     <div class="empty" style="padding-top:18px">Бот: <span class="small-link" data-action="open-bot">открыть в Telegram →</span></div>
   </section>`;
-}
-
-function achievements() {
-  const d = S.data;
-  const total = d.wishlist.length + d.history.length;
-  const bought = d.wishlist.filter((i) => i.bought).length + d.history.length;
-  return [
-    { ico: "🌱", t: "Первое желание", d: "Добавить первый подарок", ok: total >= 1 },
-    { ico: "📦", t: "Начинающий мечтатель", d: "Добавить 10 подарков", ok: total >= 10 },
-    { ico: "💯", t: "Мечтатель 100", d: "Добавить 100 подарков", ok: total >= 100 },
-    { ico: "🛍", t: "Первая покупка", d: "Отметить подарок купленным", ok: bought >= 1 },
-    { ico: "🛒", t: "Шопоголик", d: "Купить 10 подарков", ok: bought >= 10 },
-    { ico: "🎀", t: "Первое вручение", d: "Вручить первый подарок", ok: d.history.length >= 1 },
-    { ico: "💡", t: "Генератор идей", d: "Добавить 10 идей", ok: d.ideas.length >= 10 },
-    { ico: "📅", t: "Планировщик", d: "Добавить событие в календарь", ok: d.events.length >= 1 },
-    { ico: "🖼", t: "Уют", d: "Установить общий фон", ok: d.backgrounds.length >= 1 },
-    { ico: "💞", t: "Вдвоём", d: "Подарки в списке у обоих", ok: d.wishlist.filter((i) => i.userId !== S.me).length >= 1 },
-  ];
 }
 
 /* ============================ add/edit item ============================ */
@@ -643,8 +634,8 @@ function openAddModal(prefill = {}) {
       <div id="up-area"></div></div>
     <div class="row-2">
       <div class="field"><label>Категория</label>
-        <input data-action="f-cat" value="${esc(p.category || "")}" placeholder="техника, косметика…" list="cat-datalist">
-        <datalist id="cat-datalist">${catList().map((c) => `<option value="${esc(c)}">`).join("")}</datalist></div>
+        <select data-action="f-cat">${catOptions(p.category)}<option value="__new__">➕ Новая категория…</option></select>
+        <input data-action="f-cat-new" placeholder="Название новой категории" style="display:none;margin-top:8px"></div>
       <div class="field"><label>Цена</label>
         <input data-action="f-price" value="${esc(p.price || "")}" placeholder="напр. 2 000 ₽"></div>
     </div>
@@ -655,12 +646,15 @@ function openAddModal(prefill = {}) {
         <select data-action="f-type"><option value="gift" ${p.type !== "certificate" ? "selected" : ""}>Подарок</option>
         <option value="certificate" ${p.type === "certificate" ? "selected" : ""}>Сертификат</option></select></div>
     </div>
+    <div class="field"><label>Размер (необязательно)</label>
+      <input data-action="f-size" value="${esc(p.size || "")}" placeholder="напр. 42 / M"></div>
     <div class="field"><label>Голосовое пожелание</label><div id="rec-area"></div></div>
     <div class="modal-btns">
       <button class="btn primary" data-action="save-item">${isIdea ? "В копилку идей" : "Добавить в вишлист"}</button>
     </div>`, isIdea ? "Новая идея" : `Добавить подарок (${esc(whoLabel)})`);
   setupUpArea($("#up-area"), (url) => m._image = url);
   setupRecArea($("#rec-area"), (url) => m._voice = url);
+  bindCatNew(m, "f-cat", "f-cat-new");
   m._mode = isIdea ? "ideas" : "wishlist";
   m._prefill = p;
   return m;
@@ -692,6 +686,36 @@ function setupRecArea(area, onSet) {
   area._onSet = onSet;
 }
 
+function encodeWav(samples, sampleRate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const dv = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); dv.setUint32(4, 36 + samples.length * 2, true); w(8, "WAVE");
+  w(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, sampleRate, true); dv.setUint32(28, sampleRate * 2, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  w(36, "data"); dv.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) dv.setInt16(44 + i * 2, samples[i], true);
+  return buf;
+}
+
+async function blobToWav(blob) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) throw new Error("Декодирование недоступно");
+  const ctx = new AC();
+  try {
+    const ab = await blob.arrayBuffer();
+    const audioBuf = await ctx.decodeAudioData(ab);
+    const rate = 22050;
+    const out = new Float32Array(Math.ceil(audioBuf.length * rate / audioBuf.sampleRate));
+    const ch = audioBuf.getChannelData(0);
+    for (let i = 0; i < out.length; i++) out[i] = ch[Math.floor(i * audioBuf.sampleRate / rate)];
+    const pcm = new Int16Array(out.length);
+    for (let i = 0; i < out.length; i++) { const v = Math.max(-1, Math.min(1, out[i])); pcm[i] = v < 0 ? v * 0x8000 : v * 0x7FFF; }
+    return new Blob([encodeWav(pcm, rate)], { type: "audio/wav" });
+  } finally { ctx.close(); }
+}
+
 async function startRecording() {
   if (!navigator.mediaDevices?.getUserMedia) { toast("Запись не поддерживается"); return; }
   let stream;
@@ -713,7 +737,10 @@ async function startRecording() {
     rec.stop();
     stream.getTracks().forEach((t) => t.stop());
     await new Promise((r) => rec.onstop = r);
-    const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+    let blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+    if (!blob.type.includes("wav")) {
+      try { blob = await blobToWav(blob); } catch (e) {}
+    }
     closeModal();
     try {
       const url = await uploadFile(blob);
@@ -736,9 +763,10 @@ function saveEdit(m) {
   const payload = {
     title: g("e-title").trim() || it.title,
     link: g("e-link"),
-    category: g("e-cat"),
+    category: catFrom(m, "e-cat", "e-cat-new"),
     price: g("e-price"),
     priority: g("e-prio") || it.priority,
+    size: g("e-size"),
     note: g("e-note"),
   };
   const path = kind === "ideas" ? "/api/ideas/" : kind === "history" ? "/api/history/" : "/api/items/";
@@ -767,10 +795,11 @@ async function saveItemFromModal(m) {
   const payload = {
     title,
     link: g("f-link"),
-    category: g("f-cat"),
+    category: catFrom(m, "f-cat", "f-cat-new"),
     price: g("f-price"),
     priority: g("f-prio"),
     type: g("f-type"),
+    size: g("f-size"),
     image: m._image || "",
     voice: m._voice || "",
     surprise: false,
@@ -802,7 +831,6 @@ function openItem(id) {
   if (!it) return;
   const d = S.data;
   const isMine = it.userId === S.me;
-  const bought = it.bought;
   const reactionsHTML = `<div class="reactions">
     ${["❤️", "👍", "🔥", "😂", "🎉", "🥰"].map((e) => {
       const mine = it.reactions && it.reactions[S.me] === e;
@@ -813,15 +841,20 @@ function openItem(id) {
   const actions = [];
   if (it.link) actions.push(`<button class="btn" data-action="open-link" data-link="${esc(it.link)}">🔗 Открыть ссылку</button>`);
   if (kind === "wishlist") {
-    if (isMine && !it.bought) actions.push(`<button class="btn ${it.pinned ? "" : "primary"}" data-action="toggle-pin" data-id="${esc(id)}">${it.pinned ? "📌 Открепить" : "📌 Закрепить"}</button>`);
-    if (!isMine && !bought) {
-      actions.push(`<button class="btn primary" data-action="buy" data-id="${esc(id)}">🛍 Купил(а)!</button>`);
+    if (isMine && !it.gifted) {
+      if (!it.bought) {
+        actions.push(`<button class="btn ${it.pinned ? "" : "primary"}" data-action="toggle-pin" data-id="${esc(id)}">${it.pinned ? "📌 Открепить" : "📌 Закрепить"}</button>`);
+        actions.push(`<button class="btn primary" data-action="buy" data-id="${esc(id)}">🛍 Я купил(а)!</button>`);
+      } else {
+        actions.push(`<button class="btn" data-action="unbuy" data-id="${esc(id)}">Вернуть в «не куплено»</button>`);
+      }
+    }
+    if (!isMine && !it.gifted) {
+      actions.push(`<button class="btn primary" data-action="gift" data-id="${esc(id)}">🎀 Вручил(а)!</button>`);
       actions.push(`<button class="btn" data-action="copy" data-id="${esc(id)}">${icons.copy} Мне тоже</button>`);
       const inPlans = (S.data.plans || {})[id];
       actions.push(`<button class="btn ${inPlans ? "" : "primary"}" data-action="plan-add" data-id="${esc(id)}">${icons.gift} ${inPlans ? "В планах · изменить" : "В планы"}</button>`);
     }
-    if (bought && !it.gifted && !isMine) actions.push(`<button class="btn primary" data-action="gift" data-id="${esc(id)}">🎀 Вручил(а)!</button>`);
-    if (bought && !it.gifted && isMine) actions.push(`<button class="btn" data-action="unbuy" data-id="${esc(id)}">Вернуть в «не куплено»</button>`);
     if (it.gifted) actions.push(`<button class="btn small-link" data-action="restore-history" data-id="${esc(id)}">Вернуть в вишлист</button>`);
   }
   if (isMine) {
@@ -833,10 +866,11 @@ function openItem(id) {
   const img = it.giftedPhoto || it.image;
   const meta = [];
   if (it.price) meta.push(`<span class="badge dark">💵 ${esc(it.price)}</span>`);
+  if (it.size) meta.push(`<span class="badge muted">📏 ${esc(it.size)}</span>`);
   if (it.priority) meta.push(`<span class="badge ${it.priority === "must" ? "grad" : "muted"}">${PRIORITY[it.priority]}</span>`);
   if (it.category) meta.push(`<span class="badge muted">${esc(it.category)}</span>`);
   if (it.type === "certificate") meta.push(`<span class="badge dark">🎫 сертификат</span>`);
-  if (it.bought && it.boughtBy) meta.push(`<span class="badge ok">🛍 купил(а) ${esc(S.data.names[it.boughtBy] || "?")}</span>`);
+  if (it.bought) meta.push(`<span class="badge ok">🛍 куплено</span>`);
   if (it.gifted && it.giftedAt) meta.push(`<span class="badge grad">🎀 вручено ${new Date(it.giftedAt).toLocaleDateString("ru-RU")}</span>`);
   if (it.surprise) meta.push(`<span class="badge warn">🎁 сюрприз до ${it.revealDate ? fmt.format(it.revealDate) : "открытия"}</span>`);
   if (!isMine && (S.data.plans || {})[id]) meta.push(`<span class="badge grad">🎁 в планах</span>`);
@@ -918,6 +952,14 @@ const actions = {
   "bg-set": (b) => api("/api/background/set", { method: "POST", body: JSON.stringify({ index: +b.dataset.index }) }).then((d) => { if (d.ok) { S.data = d; applyBackground(); toast("Фон обновлён"); } }),
   "bg-add": (b) => pickBackground(b),
   "export": () => exportList(),
+  "export-csv": () => exportCSV(),
+  "save-about": () => {
+    const text = $("#main [data-action=about-text]")?.value || "";
+    api("/api/about", { method: "POST", body: JSON.stringify({ text }) }).then((d) => {
+      if (d.ok) { S.data = d; hapticOk(); toast("Сохранено"); render(); }
+      else toast(d.error || "Ошибка");
+    });
+  },
   "reload": () => { try { tg?.HapticFeedback?.notificationOccurred?.("warning"); } catch (e) {} location.reload(); },
   "open-bot": () => { try { tg?.openTelegramLink?.("https://t.me/" + (window.WL_BOT || "")); } catch (e) {} },
   "offline": () => toast(navigator.onLine ? "Вы онлайн 🌐" : "Вы офлайн — работает из кэша"),
@@ -940,18 +982,32 @@ const actions = {
   "gift": (b) => openGiftModal(b.dataset.id),
   "restore-history": (b) => restoreHistory(b.dataset.id),
   "plan-add": (b) => openPlanModal(b.dataset.id),
+  "open-plan": (b) => openPlanModal(b.dataset.id),
+  "plan-pick": (b) => {
+    const evId = b.dataset.event;
+    const cand = (S.data.wishlist || []).filter((i) => i.userId !== S.me && !i.bought && !i.gifted && !i.surprise);
+    if (!cand.length) { toast("В списке партнёра нет некупленных подарков"); return; }
+    openModal(`<div style="font-size:13px;color:var(--text2);margin-bottom:8px">Выберите подарок партнёра для этого праздника:</div>
+      <div class="list">${cand.map((i) => `<button class="row" data-action="pick-plan-item" data-id="${esc(i.id)}" data-event="${esc(evId)}" style="width:100%;text-align:left;cursor:pointer">
+        <div class="row-avatar" ${i.image ? `style="background-image:url('${esc(i.image)}')"` : ""}></div>
+        <div class="row-main"><div class="row-title">${esc(i.title)}</div>
+        <div class="row-sub">${esc(i.category || "")}${i.price ? " · " + esc(i.price) : ""}</div></div>
+        <span style="color:var(--accent)">›</span>
+      </button>`).join("")}</div>`, "Выбрать подарок партнёра");
+  },
+  "pick-plan-item": (b) => { closeModal(); openPlanModal(b.dataset.id, b.dataset.event); },
   "plan-new-cat": (b) => { const m = b.closest(".modal"); $("#plan-new-row", m).style.display = "block"; $("#plan-cat-new", m).focus(); },
   "plan-save": async (b) => {
     const m = b.closest(".modal");
     const id = b.dataset.id;
+    const ev = ($("#plan-ev", m)?.value || "").trim();
     const sel = $("#plan-cat", m).value;
     const newRow = $("#plan-new-row", m);
     const newCat = (newRow.style.display === "none" ? "" : ($("#plan-cat-new", m).value || "").trim());
     const category = newCat || sel;
     const note = ($("#plan-note", m).value || "").trim();
-    if (!category && !note) { toast("Выберите категорию или напишите заметку"); return; }
     b.disabled = true; b.textContent = "Сохраняю…";
-    const d = await api("/api/items/" + id + "/plan", { method: "POST", body: JSON.stringify({ category, note }) });
+    const d = await api("/api/items/" + id + "/plan", { method: "POST", body: JSON.stringify({ category, note, eventId: ev }) });
     if (!d.ok) { toast(d.error || "Ошибка"); b.disabled = false; return; }
     S.data = d; closeModal(); hapticOk(); toast("Добавлено в планы 🎁"); render();
   },
@@ -1069,7 +1125,7 @@ function openGiftModal(id) {
   const [it] = itemById(id);
   if (!it) return;
   const m = openModal(`
-    <p style="font-size:15px">Поздравляем с покупкой «${esc(it.title)}»! 🎉 Добавьте фото вручения:</p>
+    <p style="font-size:15px">Отметить «${esc(it.title)}» как вручённый? 🎉 Фото вручения — по желанию:</p>
     <label class="upload-drop" style="display:block;cursor:pointer;margin-bottom:12px">${icons.cam} Выбрать фото<input type="file" accept="image/*" id="gift-file" hidden></label>
     <div class="modal-btns">
       <button class="btn primary" data-action="gift-confirm">🎀 Вручил(а)!</button>
@@ -1094,14 +1150,16 @@ function openEditModal(id) {
     <div class="field"><label>Название</label><input data-action="e-title" value="${esc(it.title)}" maxlength="200"></div>
     <div class="field"><label>Ссылка</label><input data-action="e-link" value="${esc(it.link || "")}"></div>
     <div class="field"><label>Цена</label><input data-action="e-price" value="${esc(it.price || "")}"></div>
-    <div class="field"><label>Категория</label><input data-action="e-cat" value="${esc(it.category || "")}" list="cat-datalist2">
-      <datalist id="cat-datalist2">${catList().map((c) => `<option value="${esc(c)}">`).join("")}</datalist></div>
+    <div class="field"><label>Размер (необязательно)</label><input data-action="e-size" value="${esc(it.size || "")}" placeholder="напр. 42 / M"></div>
+    <div class="field"><label>Категория</label><select data-action="e-cat">${catOptions(it.category)}<option value="__new__">➕ Новая категория…</option></select>
+      <input data-action="e-cat-new" placeholder="Название новой категории" style="display:none;margin-top:8px"></div>
     <div class="field"><label>Приоритет</label>
       <select data-action="e-prio">${Object.entries(PRIORITY).map(([k, v]) => `<option value="${k}" ${it.priority === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
     <div class="field"><label>Заметка</label><textarea data-action="e-note" maxlength="1000">${esc(it.note || "")}</textarea></div>
     <div class="modal-btns">
       <button class="btn primary" data-action="save-edit">Сохранить</button>
     </div>`, "Редактировать");
+  bindCatNew(m, "e-cat", "e-cat-new");
   m._id = id;
 }
 
@@ -1118,6 +1176,22 @@ function exportList() {
     return Promise.resolve();
   };
   copy().then(() => toast("Вишлист скопирован 📋")).catch(() => toast("Не удалось скопировать"));
+}
+
+function exportCSV() {
+  const rows = [["Название", "Цена", "Размер", "Категория", "Приоритет", "Ссылка"]];
+  (S.data.wishlist || []).forEach((i) => {
+    rows.push([i.title, i.price || "", i.size || "", i.category || "", i.priority ? PRIORITY[i.priority] : "", i.link || ""]);
+  });
+  const csv = "\uFEFF" + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "wishlist.csv";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  toast("CSV скачан ⬇️");
 }
 
 /* ============================ backgrounds & theme ============================ */

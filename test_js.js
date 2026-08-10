@@ -51,7 +51,7 @@ check('бутстрап вызывается в конце', () => {
 });
 
 console.log('smoke: согласованность классов JS/CSS');
-const classes = ['view', 'card', 'btn', 'chip', 'view-head', 'view-title', 'view-sub', 'tb-btn', 'row', 'tile', 'modal', 'toast', 'empty', 'divider', 'section-title', 'icon-small', 'ach-item', 'ach-ico', 'chips', 'small-link'];
+const classes = ['view', 'card', 'btn', 'chip', 'view-head', 'view-title', 'view-sub', 'tb-btn', 'row', 'tile', 'modal', 'toast', 'empty', 'divider', 'section-title', 'icon-small', 'chips', 'small-link'];
 check('классы интерфейса есть в style.css', () => {
   for (const c of classes) {
     assert.ok(css.includes('.' + c), 'нет стиля .' + c);

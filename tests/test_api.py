@@ -122,11 +122,11 @@ async def test_mutations_return_full_data(pair):
     client, uid_a, uid_b, ini_a, ini_b = pair
     r = await add(client, ini_a, title="Книга")
     iid = (await r.json())["item"]["id"]
-    r = await client.patch(f"/api/items/{iid}?" + urlencode({"initData": ini_b}), json={"bought": True})
+    r = await client.patch(f"/api/items/{iid}?" + urlencode({"initData": ini_a}), json={"bought": True})
     body = await r.json()
-    assert body["me"] == uid_b
+    assert body["me"] == uid_a
     assert body["wishlist"][0]["bought"] is True
-    assert body["wishlist"][0]["boughtBy"] == uid_b
+    assert body["wishlist"][0]["boughtBy"] == uid_a
     assert isinstance(body["ideas"], list) and isinstance(body["events"], list)
 
 
@@ -189,12 +189,16 @@ async def test_patch_permissions(pair):
     assert r.status == 200
     d = await get_data(client, ini_a)
     assert d["wishlist"][0]["title"] == "Хакер!"
+    # партнёр не может отметить чужие подарки купленными
     r = await client.patch(f"/api/items/{iid}?" + urlencode({"initData": ini_b}), json={"bought": True})
+    assert r.status == 400
+    # владелец отмечает свой подарок купленным
+    r = await client.patch(f"/api/items/{iid}?" + urlencode({"initData": ini_a}), json={"bought": True})
     assert r.status == 200
-    d = await get_data(client, ini_a)
+    d = await get_data(client, ini_b)
     it = d["wishlist"][0]
     assert it["bought"] is True
-    assert it["boughtBy"] == uid_b
+    assert it["boughtBy"] == uid_a
 
 
 async def test_reactions(pair):
@@ -256,7 +260,7 @@ async def test_gift_flow(pair):
     client, uid_a, uid_b, ini_a, ini_b = pair
     r = await add(client, ini_a, title="Часы")
     iid = (await r.json())["item"]["id"]
-    await client.patch(f"/api/items/{iid}?" + urlencode({"initData": ini_b}), json={"bought": True})
+    # партнёр вручает без предварительной пометки «куплено»
     r = await client.post(f"/api/items/{iid}/gift?" + urlencode({"initData": ini_b}), json={"photo": "/uploads/happy.png"})
     assert r.status == 200
     d = await get_data(client, ini_a)
@@ -266,12 +270,24 @@ async def test_gift_flow(pair):
     assert h["gifted"] is True
     assert h["giftedPhoto"] == "/uploads/happy.png"
     assert h["giftedBy"] == uid_b
+    assert h["boughtBy"] == uid_b
 
 
-async def test_gift_requires_bought(pair):
-    client, _, _, ini_a, ini_b = pair
-    r = await add(client, ini_a, title="Без покупки")
+async def test_gift_only_partner(pair):
+    client, _, _, ini_a, _ = pair
+    r = await add(client, ini_a, title="Часы")
     iid = (await r.json())["item"]["id"]
+    # владелец не может вручить свой же подарок
+    r = await client.post(f"/api/items/{iid}/gift?" + urlencode({"initData": ini_a}), json={})
+    assert r.status == 400
+
+
+async def test_gift_blocked_when_owner_bought(pair):
+    client, _, _, ini_a, ini_b = pair
+    r = await add(client, ini_a, title="Себе")
+    iid = (await r.json())["item"]["id"]
+    await client.patch(f"/api/items/{iid}?" + urlencode({"initData": ini_a}), json={"bought": True})
+    # партнёр не может «вручить» подарок, который владелец купил себе
     r = await client.post(f"/api/items/{iid}/gift?" + urlencode({"initData": ini_b}), json={})
     assert r.status == 400
 
@@ -387,6 +403,47 @@ async def test_static_assets_served(api):
         assert r.status == 200, path
         assert ctype in r.headers.get("Content-Type", "")
 
+async def test_size_field(pair):
+    client, uid_a, _, ini_a, ini_b = pair
+    r = await add(client, ini_a, title="Кроссовки", size="42")
+    iid = (await r.json())["item"]["id"]
+    d = await get_data(client, ini_b)
+    assert d["wishlist"][0]["size"] == "42"
+    r = await client.patch(f"/api/items/{iid}?" + urlencode({"initData": ini_b}), json={"size": "M"})
+    assert r.status == 200
+    d = await get_data(client, ini_a)
+    assert d["wishlist"][0]["size"] == "M"
+
+
+async def test_copy_keeps_size(pair):
+    client, uid_a, uid_b, ini_a, ini_b = pair
+    await add(client, ini_a, title="Футболка", size="L")
+    iid = (await get_data(client, ini_b))["wishlist"][0]["id"]
+    r = await client.post(f"/api/items/{iid}/copy?" + urlencode({"initData": ini_b}))
+    assert r.status == 200
+    d = await get_data(client, ini_b)
+    mine = [i for i in d["wishlist"] if i["userId"] == uid_b]
+    assert mine[0]["title"] == "Футболка"
+    assert mine[0]["size"] == "L"
+
+
+async def test_about(pair):
+    client, uid_a, uid_b, ini_a, ini_b = pair
+    r = await client.post("/api/about?" + urlencode({"initData": ini_a}), json={"text": "люблю фильмы и кофе"})
+    assert r.status == 200
+    d = await get_data(client, ini_b)
+    assert d["about"][uid_a] == "люблю фильмы и кофе"
+    r = await client.post("/api/about?" + urlencode({"initData": ini_a}), json={"text": ""})
+    assert r.status == 200
+    d = await get_data(client, ini_a)
+    assert d["about"][uid_a] == ""
+
+
+async def test_about_unauthorized(api):
+    r = await api.post("/api/about", json={"text": "x"})
+    assert r.status == 403
+
+
 async def test_plans_private_and_flow(pair):
     client, uid_a, uid_b, ini_a, ini_b = pair
     await add(client, ini_a, title="Лампочка", category="Техника")
@@ -416,3 +473,29 @@ async def test_plans_private_and_flow(pair):
     body = await r.json()
     assert body["ok"] is True
     assert body["plans"] == {}
+
+
+async def test_plans_empty_and_event(pair):
+    client, uid_a, uid_b, ini_a, ini_b = pair
+    await add(client, ini_a, title="Лампочка", category="Техника")
+    it = (await get_data(client, ini_b))["wishlist"][0]
+    r = await client.post("/api/events?" + urlencode({"initData": ini_b}),
+                          json={"title": "Новый год", "dateTs": w.now_ms() + 86_400_000, "card": ""})
+    ev = (await r.json())["events"][0]
+    # пустой план (без категории и заметки) сохраняется
+    r = await client.post(f"/api/items/{it['id']}/plan?" + urlencode({"initData": ini_b}), json={})
+    assert r.status == 200
+    body = await r.json()
+    assert body["plans"][it["id"]]["category"] == ""
+    assert body["plans"][it["id"]]["note"] == ""
+    assert body["plans"][it["id"]].get("eventId", "") == ""
+    # привязка к событию
+    r = await client.post(f"/api/items/{it['id']}/plan?" + urlencode({"initData": ini_b}),
+                          json={"category": "Техника", "eventId": ev["id"]})
+    assert r.status == 200
+    body = await r.json()
+    assert body["plans"][it["id"]]["eventId"] == ev["id"]
+    # несуществующее событие отклоняется
+    r = await client.post(f"/api/items/{it['id']}/plan?" + urlencode({"initData": ini_b}),
+                          json={"eventId": "nope"})
+    assert r.status == 400

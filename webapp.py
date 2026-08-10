@@ -34,6 +34,7 @@ DEFAULT_DATA = {
     "backgrounds": [],
     "backgroundIndex": 0,
     "chats": {},
+    "about": {},
 }
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -50,9 +51,10 @@ CONTENT_TYPES = {
     "ogg": "audio/ogg",
     "opus": "audio/ogg",
     "webm": "audio/webm",
+    "wav": "audio/wav",
 }
 IMAGE_EXT = ("jpg", "jpeg", "png", "gif", "webp")
-AUDIO_EXT = ("m4a", "ogg", "opus", "webm")
+AUDIO_EXT = ("m4a", "ogg", "opus", "webm", "wav")
 
 
 def now_ms():
@@ -111,7 +113,7 @@ def normalize_item(it):
         "type": "gift", "bought": False, "boughtBy": "", "boughtAt": 0,
         "gifted": False, "giftedBy": "", "giftedAt": 0, "giftedPhoto": "",
         "surprise": False, "revealDate": 0, "note": "", "pinned": False,
-        "reactions": {}, "voice": "",
+        "reactions": {}, "voice": "", "size": "",
     }
     base.update(it or {})
     base["reactions"] = dict(base.get("reactions") or {})
@@ -364,6 +366,7 @@ def api_data(data, uid):
         "plans": data["plans"].get(uid, {}),
         "backgrounds": data["backgrounds"],
         "backgroundIndex": data["backgroundIndex"],
+        "about": data.get("about", {}),
         "serverTime": now,
         "partner": partner,
         "me": uid,
@@ -410,6 +413,7 @@ def _build_item(data, uid, body):
         "gifted": False, "giftedBy": "", "giftedAt": 0, "giftedPhoto": "",
         "surprise": bool(body.get("surprise")), "revealDate": _safe_int(body.get("revealDate")),
         "note": str(body.get("note") or "").strip()[:1000],
+        "size": str(body.get("size") or "").strip()[:20],
         "pinned": bool(body.get("pinned")),
         "reactions": {}, "voice": str(body.get("voice") or "").strip()[:2000],
     }
@@ -497,6 +501,8 @@ def _validated_patch(item, user, field, value):
         return str(value or "").strip()[:30]
     if field == "note":
         return str(value or "").strip()[:1000]
+    if field == "size":
+        return str(value or "").strip()[:20]
     if field == "priority":
         return value if value in ("must", "want", "maybe") else item.get("priority", "")
     if field == "type":
@@ -533,6 +539,8 @@ async def patch_handler(request):
     now = now_ms()
     for field, value in body.items():
         if field in ("bought",):
+            if it["userId"] != uid:
+                return web.json_response({"ok": False, "error": "Отметить купленным может только владелец"}, status=400)
             it["bought"] = bool(value)
             it["boughtBy"] = uid if bool(value) else ""
             it["boughtAt"] = now if bool(value) else 0
@@ -552,7 +560,7 @@ async def patch_handler(request):
             if field == "revealDate" and it.get("revealDate") and it["revealDate"] <= now:
                 it["revealDate"] = 0
             continue
-        if field not in ("title", "link", "category", "price", "note", "priority",
+        if field not in ("title", "link", "category", "price", "note", "size", "priority",
                          "type", "pinned", "giftedPhoto"):
             return web.json_response({"ok": False, "error": f"Нельзя менять поле: {field}"}, status=400)
         if it["userId"] != uid and it["userId"] != partner_of(data, uid):
@@ -618,6 +626,7 @@ async def copy_handler(request):
         "price": it.get("price", ""),
         "priority": it.get("priority", ""),
         "type": it.get("type", "gift"),
+        "size": it.get("size", ""),
     })
     data["wishlist"].insert(0, copy)
     await _save(data)
@@ -639,13 +648,20 @@ async def gift_handler(request):
     lst, i, it = _find_item(data, "wishlist", item_id)
     if not it:
         return web.json_response({"ok": False, "error": "Не найдено"}, status=404)
-    if not it.get("bought"):
-        return web.json_response({"ok": False, "error": "Сначала отметьте как купленное"}, status=400)
+    if it.get("userId") == uid:
+        return web.json_response({"ok": False, "error": "Это ваш подарок — вручить его может партнёр"}, status=400)
+    if it.get("gifted"):
+        return web.json_response({"ok": False, "error": "Подарок уже вручён"}, status=400)
+    if it.get("bought") and it.get("boughtBy") == it.get("userId"):
+        return web.json_response({"ok": False, "error": "Подарок куплен самим владельцем"}, status=400)
     now = now_ms()
     it["gifted"] = True
     it["giftedBy"] = uid
     it["giftedAt"] = now
     it["giftedPhoto"] = str(body.get("photo") or "").strip()[:2000]
+    it["bought"] = True
+    it["boughtBy"] = uid
+    it["boughtAt"] = now
     data["history"].insert(0, it)
     lst.pop(i)
     await _save(data)
@@ -751,6 +767,23 @@ async def delete_category_handler(request):
     return full_api(data, uid)
 
 
+async def about_handler(request):
+    user, _ = auth_user(request)
+    if not user:
+        return deny()
+    data = await _load()
+    uid = user_uid(data, str(user.get("id")))
+    if not uid:
+        return deny()
+    body, err = await read_json(request)
+    if err:
+        return web.json_response({"ok": False, "error": err}, status=400)
+    text = str(body.get("text") or "").strip()[:600]
+    data.setdefault("about", {})[uid] = text
+    await _save(data)
+    return full_api(data, uid)
+
+
 async def plan_handler(request):
     user, _ = auth_user(request)
     if not user:
@@ -770,6 +803,9 @@ async def plan_handler(request):
         return web.json_response({"ok": False, "error": err}, status=400)
     category = str(body.get("category") or "").strip()[:60]
     note = str(body.get("note") or "").strip()[:500]
+    event_id = str(body.get("eventId") or "").strip()[:40]
+    if event_id and not any(e.get("id") == event_id for e in data["events"]):
+        return web.json_response({"ok": False, "error": "Событие не найдено"}, status=400)
     if category:
         cats = data["categories"].setdefault(uid, [])
         if category not in cats:
@@ -777,6 +813,7 @@ async def plan_handler(request):
     data["plans"].setdefault(uid, {})[item_id] = {
         "category": category,
         "note": note,
+        "eventId": event_id,
         "addedAt": now_ms(),
         "src": {
             "title": it.get("title", ""),
@@ -1008,6 +1045,7 @@ def create_app():
     app.router.add_post("/api/events/{id}/delete", delete_event_handler)
     app.router.add_post("/api/categories", add_category_handler)
     app.router.add_post("/api/categories/{name}/delete", delete_category_handler)
+    app.router.add_post("/api/about", about_handler)
     app.router.add_post("/api/upload", uploads_handler)
     app.router.add_post("/api/background", background_handler)
     app.router.add_post("/api/background/set", background_set_handler)
