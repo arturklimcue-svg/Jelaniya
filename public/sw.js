@@ -1,5 +1,5 @@
 const CACHE = "wishlist-v4";
-const ASSETS = ["/", "/index.html", "/style.css?v=20260810c", "/script.js?v=20260810c", "/manifest.json?v=20260810c"];
+const ASSETS = ["/", "/index.html", "/style.css?v=20260810d", "/script.js?v=20260810d", "/manifest.json?v=20260810d"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

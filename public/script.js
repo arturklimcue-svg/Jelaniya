@@ -468,7 +468,7 @@ function genIdeas() {
     <div class="list">${pick.map((t) => `<button class="row" data-action="prefill-idea" data-title="${esc(t)}" style="width:100%;text-align:left">
       <div class="row-main"><div class="row-title">${esc(t)}</div></div><span style="color:var(--accent)">добавить ›</span>
     </button>`).join("")}</div>
-    <div class="modal-btns"><button class="btn" data-action="gen-again">${icons.dice} Перемешать</button></div>`, "Генератор идей");
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px"><button class="btn fit" data-action="gen-again">${icons.dice} Перемешать</button></div>`, "Генератор идей");
   m._genPick = pick;
   return pick;
 }
@@ -602,7 +602,6 @@ function viewProfile() {
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn" data-action="export">📋 Поделиться вишлистом</button>
       <button class="btn" data-action="export-csv">⬇️ Скачать CSV</button>
-      <button class="btn" data-action="offline">🛜 Проверить офлайн</button>
     </div>
     <div class="empty" style="padding-top:18px">Бот: <span class="small-link" data-action="open-bot">открыть в Telegram →</span></div>
   </section>`;
@@ -815,29 +814,29 @@ function openItem(id) {
   </div>
   ${Object.keys(it.reactions || {}).length ? `<div class="react-count">${Object.entries(it.reactions).map(([u, e]) => esc(S.data.names[u] || u) + " " + e).join(" · ")}</div>` : ""}`;
   const actions = [];
-  if (it.link) actions.push(`<button class="btn small" data-action="open-link" data-link="${esc(it.link)}">🔗 Открыть ссылку</button>`);
+  if (it.link) actions.push(`<button class="btn fit" data-action="open-link" data-link="${esc(it.link)}">🔗 Открыть ссылку</button>`);
   if (kind === "wishlist") {
     if (isMine && !it.gifted) {
       if (!it.bought) {
-        actions.push(`<button class="btn small ${it.pinned ? "" : "primary"}" data-action="toggle-pin" data-id="${esc(id)}">${it.pinned ? "📌 Открепить" : "📌 Закрепить"}</button>`);
-        actions.push(`<button class="btn small primary" data-action="buy" data-id="${esc(id)}">🛍 Я купил(а)!</button>`);
+        actions.push(`<button class="btn fit ${it.pinned ? "" : "primary"}" data-action="toggle-pin" data-id="${esc(id)}">${it.pinned ? "📌 Открепить" : "📌 Закрепить"}</button>`);
+        actions.push(`<button class="btn fit primary" data-action="buy" data-id="${esc(id)}">🛍 Я купил(а)!</button>`);
       } else {
-        actions.push(`<button class="btn small" data-action="unbuy" data-id="${esc(id)}">Вернуть в «не куплено»</button>`);
+        actions.push(`<button class="btn fit" data-action="unbuy" data-id="${esc(id)}">Вернуть в «не куплено»</button>`);
       }
     }
     if (!isMine && !it.gifted) {
-      actions.push(`<button class="btn small primary" data-action="gift" data-id="${esc(id)}">🎀 Вручил(а)!</button>`);
-      actions.push(`<button class="btn small" data-action="copy" data-id="${esc(id)}">${icons.copy} Мне тоже</button>`);
+      actions.push(`<button class="btn fit primary" data-action="gift" data-id="${esc(id)}">🎀 Вручил(а)!</button>`);
+      actions.push(`<button class="btn fit" data-action="copy" data-id="${esc(id)}">${icons.copy} Мне тоже</button>`);
       const inPlans = (S.data.plans || {})[id];
-      actions.push(`<button class="btn small ${inPlans ? "" : "primary"}" data-action="plan-add" data-id="${esc(id)}">${icons.gift} ${inPlans ? "В планах · изменить" : "В планы"}</button>`);
+      actions.push(`<button class="btn fit ${inPlans ? "" : "primary"}" data-action="plan-add" data-id="${esc(id)}">${icons.gift} ${inPlans ? "В планах · изменить" : "В планы"}</button>`);
     }
-    if (it.gifted) actions.push(`<button class="btn small-link" data-action="restore-history" data-id="${esc(id)}">Вернуть в вишлист</button>`);
+    if (it.gifted) actions.push(`<button class="btn fit" data-action="restore-history" data-id="${esc(id)}">Вернуть в вишлист</button>`);
   }
   if (isMine) {
-    actions.push(`<button class="btn small" data-action="edit-item" data-id="${esc(id)}">✏️ Редактировать</button>`);
-    actions.push(`<button class="btn small danger" data-action="del-item" data-id="${esc(id)}">Удалить</button>`);
+    actions.push(`<button class="btn fit" data-action="edit-item" data-id="${esc(id)}">✏️ Редактировать</button>`);
+    actions.push(`<button class="btn fit danger" data-action="del-item" data-id="${esc(id)}">Удалить</button>`);
   } else if (kind !== "history") {
-    actions.push(`<button class="btn small" data-action="del-item" data-id="${esc(id)}">Удалить</button>`);
+    actions.push(`<button class="btn fit" data-action="del-item" data-id="${esc(id)}">Удалить</button>`);
   }
   const img = it.giftedPhoto || it.image;
   const meta = [];
@@ -935,7 +934,6 @@ const actions = {
   },
   "reload": () => { try { tg?.HapticFeedback?.notificationOccurred?.("warning"); } catch (e) {} location.reload(); },
   "open-bot": () => { try { tg?.openTelegramLink?.("https://t.me/" + (window.WL_BOT || "")); } catch (e) {} },
-  "offline": () => toast(navigator.onLine ? "Вы онлайн 🌐" : "Вы офлайн — работает из кэша"),
   "save-item": (b) => saveItemFromModal(b.closest(".modal")),
   "save-edit": (b) => saveEdit(b.closest(".modal")),
   "crop-ok": (b) => { const m = b.closest(".modal"); m._crop && m._crop(); },

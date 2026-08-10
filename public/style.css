@@ -164,6 +164,7 @@ html[data-theme="dark"] #bgwall-overlay { opacity: .94; }
 .btn.danger { background: rgba(229,72,77,.12); color: var(--danger); border-color: rgba(229,72,77,.3); }
 .btn.ghost { background: none; box-shadow: none; }
 .btn.small { width: auto; padding: 8px 12px; font-size: 13px; border-radius: 11px; }
+.btn.fit { width: auto; }
 .btn:disabled { opacity: .5; }
 
 /* ---------- forms ---------- */
