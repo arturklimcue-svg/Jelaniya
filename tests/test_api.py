@@ -427,20 +427,24 @@ async def test_copy_keeps_size(pair):
     assert mine[0]["size"] == "L"
 
 
-async def test_about(pair):
+async def test_interests(pair):
     client, uid_a, uid_b, ini_a, ini_b = pair
-    r = await client.post("/api/about?" + urlencode({"initData": ini_a}), json={"text": "люблю фильмы и кофе"})
+    r = await client.post("/api/interests?" + urlencode({"initData": ini_a}),
+                          json={"list": [{"name": "Вязание", "buy": "пряжа, спицы"},
+                                         {"name": "", "buy": "мусор"},
+                                         {"name": "Кофе", "buy": ""}]})
     assert r.status == 200
     d = await get_data(client, ini_b)
-    assert d["about"][uid_a] == "люблю фильмы и кофе"
-    r = await client.post("/api/about?" + urlencode({"initData": ini_a}), json={"text": ""})
+    assert d["interests"][uid_a] == [{"name": "Вязание", "buy": "пряжа, спицы"},
+                                     {"name": "Кофе", "buy": ""}]
+    r = await client.post("/api/interests?" + urlencode({"initData": ini_a}), json={"list": []})
     assert r.status == 200
     d = await get_data(client, ini_a)
-    assert d["about"][uid_a] == ""
+    assert d["interests"][uid_a] == []
 
 
-async def test_about_unauthorized(api):
-    r = await api.post("/api/about", json={"text": "x"})
+async def test_interests_unauthorized(api):
+    r = await api.post("/api/interests", json={"list": []})
     assert r.status == 403
 
 

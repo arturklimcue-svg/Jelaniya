@@ -561,9 +561,18 @@ function historyRows() {
 
 /* ============================ profile ============================ */
 
+function interestRow(int) {
+  return `<div class="int-row" style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+    <input data-action="int-name" value="${esc(int.name || "")}" placeholder="интерес, напр. вязание" maxlength="60" style="flex:1;min-width:0">
+    <input data-action="int-buy" value="${esc(int.buy || "")}" placeholder="что купить" maxlength="120" style="flex:1.3;min-width:0">
+    <button class="icon-small" data-action="del-interest" title="Убрать">${icons.x}</button>
+  </div>`;
+}
+
 function viewProfile() {
   const d = S.data;
-  const aboutOther = d.partner ? (d.about?.[d.partner] || "") : "";
+  const myInt = (d.interests && d.interests[S.me]) || [];
+  const paInt = d.partner ? ((d.interests && d.interests[d.partner]) || []) : [];
   const bgs = d.backgrounds || [];
   const evs = d.events.map((e) => `<div class="row"><div class="row-main"><div class="row-title">${esc(e.title)}</div>
     <div class="row-sub">${fmtFull.format(e.dateTs)}</div></div>
@@ -595,10 +604,17 @@ function viewProfile() {
     <div class="section-title">Интересы и хобби</div>
     <div class="card" style="padding:14px;margin-bottom:14px">
       <div style="font-size:12.5px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px">Мои интересы</div>
-      <textarea data-action="about-text" maxlength="600" placeholder="Что нравится: фильмы, хобби, коллекции, любимые бренды…" style="margin-top:6px">${esc(S.data.about?.[S.me] || "")}</textarea>
-      <button class="btn primary" data-action="save-about" style="margin-top:8px">Сохранить</button>
+      <div style="font-size:13px;color:var(--text2);margin:6px 0 10px">Добавьте увлечения и подсказки, что к ним подарить — партнёр увидит список</div>
+      <div id="interests-list">${myInt.map(interestRow).join("")}</div>
+      <button class="btn small" data-action="add-interest" style="margin-top:10px">＋ Добавить интерес</button>
+      <button class="btn primary" data-action="save-interests" style="margin-top:8px">Сохранить</button>
       <div class="divider"></div>
-      <div style="font-size:13px;color:var(--text2);white-space:pre-wrap">Интересы <b>${esc(partnerName())}</b>: ${aboutOther ? `<span style="color:var(--text)">${esc(aboutOther)}</span>` : "пока не добавил(а)"}</div>
+      <div style="font-size:13px;color:var(--text2)">Интересы <b>${esc(partnerName())}</b>:
+        ${paInt.length ? `<div class="list" style="margin-top:8px">${paInt.map((x) => `<div class="row">
+          <div class="row-main"><div class="row-title">${esc(x.name)}</div>
+          ${x.buy ? `<div class="row-sub">🎁 ${esc(x.buy)}</div>` : `<div class="row-sub">—</div>`}</div>
+        </div>`).join("")}</div>` : `<span> пока не добавил(а)</span>`}
+      </div>
     </div>
     <div class="section-title">События и открытки</div>
     <div class="card" style="padding:14px;margin-bottom:14px">
@@ -953,12 +969,27 @@ const actions = {
   "bg-add": (b) => pickBackground(b),
   "export": () => exportList(),
   "export-csv": () => exportCSV(),
-  "save-about": () => {
-    const text = $("#main [data-action=about-text]")?.value || "";
-    api("/api/about", { method: "POST", body: JSON.stringify({ text }) }).then((d) => {
+  "save-interests": () => {
+    const list = [...document.querySelectorAll("#interests-list .int-row")].map((r) => ({
+      name: r.querySelector("[data-action=int-name]")?.value.trim() || "",
+      buy: r.querySelector("[data-action=int-buy]")?.value.trim() || "",
+    })).filter((r) => r.name);
+    api("/api/interests", { method: "POST", body: JSON.stringify({ list }) }).then((d) => {
       if (d.ok) { S.data = d; hapticOk(); toast("Сохранено"); render(); }
       else toast(d.error || "Ошибка");
     });
+  },
+  "add-interest": () => {
+    const list = $("#interests-list");
+    if (!list) return;
+    const row = el("div");
+    row.innerHTML = interestRow({ name: "", buy: "" });
+    list.appendChild(row.firstElementChild);
+    row.firstElementChild.querySelector("[data-action=int-name]")?.focus();
+  },
+  "del-interest": (b) => {
+    const row = b.closest(".int-row");
+    if (row) row.remove();
   },
   "reload": () => { try { tg?.HapticFeedback?.notificationOccurred?.("warning"); } catch (e) {} location.reload(); },
   "open-bot": () => { try { tg?.openTelegramLink?.("https://t.me/" + (window.WL_BOT || "")); } catch (e) {} },

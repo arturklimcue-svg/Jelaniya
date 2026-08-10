@@ -34,7 +34,7 @@ DEFAULT_DATA = {
     "backgrounds": [],
     "backgroundIndex": 0,
     "chats": {},
-    "about": {},
+    "interests": {},
 }
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -366,7 +366,7 @@ def api_data(data, uid):
         "plans": data["plans"].get(uid, {}),
         "backgrounds": data["backgrounds"],
         "backgroundIndex": data["backgroundIndex"],
-        "about": data.get("about", {}),
+        "interests": data.get("interests", {}),
         "serverTime": now,
         "partner": partner,
         "me": uid,
@@ -767,7 +767,7 @@ async def delete_category_handler(request):
     return full_api(data, uid)
 
 
-async def about_handler(request):
+async def interests_handler(request):
     user, _ = auth_user(request)
     if not user:
         return deny()
@@ -778,8 +778,21 @@ async def about_handler(request):
     body, err = await read_json(request)
     if err:
         return web.json_response({"ok": False, "error": err}, status=400)
-    text = str(body.get("text") or "").strip()[:600]
-    data.setdefault("about", {})[uid] = text
+    lst = body.get("list")
+    if not isinstance(lst, list):
+        return web.json_response({"ok": False, "error": "Плохие данные"}, status=400)
+    clean = []
+    for it in lst:
+        if not isinstance(it, dict):
+            continue
+        name = str(it.get("name") or "").strip()[:60]
+        buy = str(it.get("buy") or "").strip()[:120]
+        if not name:
+            continue
+        clean.append({"name": name, "buy": buy})
+        if len(clean) >= 20:
+            break
+    data.setdefault("interests", {})[uid] = clean
     await _save(data)
     return full_api(data, uid)
 
@@ -1045,7 +1058,7 @@ def create_app():
     app.router.add_post("/api/events/{id}/delete", delete_event_handler)
     app.router.add_post("/api/categories", add_category_handler)
     app.router.add_post("/api/categories/{name}/delete", delete_category_handler)
-    app.router.add_post("/api/about", about_handler)
+    app.router.add_post("/api/interests", interests_handler)
     app.router.add_post("/api/upload", uploads_handler)
     app.router.add_post("/api/background", background_handler)
     app.router.add_post("/api/background/set", background_set_handler)
