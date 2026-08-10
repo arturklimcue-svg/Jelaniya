@@ -1001,6 +1001,7 @@ def create_app():
     app.on_cleanup.append(_close_session)
 
     app.router.add_get("/", index)
+    app.router.add_get("/index.html", index)
     app.router.add_static("/uploads/", path=UPLOADS_DIR)
     app.router.add_get("/api/data", api_data_handler)
     app.router.add_post("/api/items", add_handler)
