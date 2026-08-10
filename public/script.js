@@ -43,6 +43,7 @@ const icons = {
   mic: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>',
   stop: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>',
+  edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
 };
 
 function haptic(kind = "light") {
@@ -561,15 +562,37 @@ function historyRows() {
 
 /* ============================ profile ============================ */
 
-function interestRow(int) {
-  return `<div class="int-row">
-    <div class="int-row-2">
-      <input data-action="int-name" value="${esc(int.name || "")}" placeholder="интерес, напр. вязание" maxlength="60">
-      <input data-action="int-buy" value="${esc(int.buy || "")}" placeholder="что купить, напр. пряжа" maxlength="120">
-      <button class="icon-small" data-action="del-interest" title="Убрать">${icons.x}</button>
-    </div>
-    <input data-action="int-link" value="${esc(int.link || "")}" placeholder="Ссылка на товар (напр. на пряжу)" maxlength="300">
+function interestRow(int, i) {
+  return `<div class="row">
+    <div class="row-main"><div class="row-title">${esc(int.name)}</div>
+    ${int.buy ? `<div class="row-sub">🎁 ${esc(int.buy)}</div>` : ""}
+    ${int.link ? `<button class="btn small" data-action="open-link" data-link="${esc(int.link)}" style="margin-top:6px">🔗 Открыть</button>` : ""}</div>
+    <button class="icon-small" data-action="int-edit" data-index="${i}" title="Редактировать">${icons.edit}</button>
+    <button class="icon-small" data-action="int-del" data-index="${i}" title="Убрать">${icons.x}</button>
   </div>`;
+}
+
+function interestModal(p = {}) {
+  const m = openModal(`
+    <div class="field"><label>Интерес / хобби</label>
+      <input data-action="i-name" value="${esc(p.name || "")}" maxlength="60" placeholder="напр. вязание"></div>
+    <div class="field"><label>Что купить (подсказка)</label>
+      <input data-action="i-buy" value="${esc(p.buy || "")}" maxlength="120" placeholder="напр. пряжа, спицы"></div>
+    <div class="field"><label>Ссылка на товар</label>
+      <input data-action="i-link" value="${esc(p.link || "")}" maxlength="300" placeholder="https://…"></div>
+    <div class="modal-btns">
+      <button class="btn primary" data-action="i-save">Сохранить</button>
+      <button class="btn" data-action="close-modal">Отмена</button>
+    </div>`, p.name ? "Редактировать интерес" : "Новый интерес");
+  m._index = typeof p._index === "number" ? p._index : -1;
+  return m;
+}
+
+function saveInterests(list) {
+  api("/api/interests", { method: "POST", body: JSON.stringify({ list }) }).then((d) => {
+    if (d.ok) { S.data = d; hapticOk(); toast("Сохранено"); render(); }
+    else toast(d.error || "Ошибка");
+  });
 }
 
 function viewProfile() {
@@ -608,9 +631,10 @@ function viewProfile() {
     <div class="card" style="padding:14px;margin-bottom:14px">
       <div style="font-size:12.5px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px">Мои интересы</div>
       <div style="font-size:13px;color:var(--text2);margin:6px 0 10px">Добавьте увлечения и подсказки, что к ним подарить — партнёр увидит список</div>
-      <div id="interests-list">${myInt.map(interestRow).join("")}</div>
-      <button class="btn small" data-action="add-interest" style="margin-top:10px">＋ Добавить интерес</button>
-      <button class="btn primary" data-action="save-interests" style="margin-top:8px">Сохранить</button>
+      <div id="interests-list">${myInt.length
+        ? `<div class="list">${myInt.map(interestRow).join("")}</div>`
+        : `<div style="font-size:13px;color:var(--text2)">Пока пусто — добавьте первое увлечение.</div>`}</div>
+      <button class="btn small" data-action="int-add" style="margin-top:10px">＋ Добавить интерес</button>
       <div class="divider"></div>
       <div style="font-size:13px;color:var(--text2)">Интересы <b>${esc(partnerName())}</b>:
         ${paInt.length ? `<div class="list" style="margin-top:8px">${paInt.map((x) => `<div class="row">
@@ -973,28 +997,28 @@ const actions = {
   "bg-add": (b) => pickBackground(b),
   "export": () => exportList(),
   "export-csv": () => exportCSV(),
-  "save-interests": () => {
-    const list = [...document.querySelectorAll("#interests-list .int-row")].map((r) => ({
-      name: r.querySelector("[data-action=int-name]")?.value.trim() || "",
-      buy: r.querySelector("[data-action=int-buy]")?.value.trim() || "",
-      link: r.querySelector("[data-action=int-link]")?.value.trim() || "",
-    })).filter((r) => r.name);
-    api("/api/interests", { method: "POST", body: JSON.stringify({ list }) }).then((d) => {
-      if (d.ok) { S.data = d; hapticOk(); toast("Сохранено"); render(); }
-      else toast(d.error || "Ошибка");
-    });
+  "int-add": () => interestModal({}),
+  "int-edit": (b) => {
+    const list = S.data.interests?.[S.me] || [];
+    const it = list[+b.dataset.index];
+    if (it) interestModal({ ...it, _index: +b.dataset.index });
   },
-  "add-interest": () => {
-    const list = $("#interests-list");
-    if (!list) return;
-    const row = el("div");
-    row.innerHTML = interestRow({ name: "", buy: "" });
-    list.appendChild(row.firstElementChild);
-    row.firstElementChild.querySelector("[data-action=int-name]")?.focus();
+  "int-del": (b) => {
+    const list = [...(S.data.interests?.[S.me] || [])];
+    list.splice(+b.dataset.index, 1);
+    saveInterests(list);
   },
-  "del-interest": (b) => {
-    const row = b.closest(".int-row");
-    if (row) row.remove();
+  "i-save": (b) => {
+    const m = b.closest(".modal");
+    const g = (a) => ($("[data-action=" + a + "]", m)?.value || "").trim();
+    const name = g("i-name");
+    if (!name) { toast("Введите название интереса"); return; }
+    const list = [...(S.data.interests?.[S.me] || [])];
+    const item = { name, buy: g("i-buy"), link: g("i-link") };
+    if (m._index >= 0) list[m._index] = item;
+    else list.push(item);
+    saveInterests(list);
+    closeModal();
   },
   "reload": () => { try { tg?.HapticFeedback?.notificationOccurred?.("warning"); } catch (e) {} location.reload(); },
   "open-bot": () => { try { tg?.openTelegramLink?.("https://t.me/" + (window.WL_BOT || "")); } catch (e) {} },
